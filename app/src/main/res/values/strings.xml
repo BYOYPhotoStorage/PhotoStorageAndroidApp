@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">Photo Backup</string>
+
+    <string name="hint_key_id">B2 Application Key ID</string>
+    <string name="hint_app_key">B2 Application Key</string>
+    <string name="hint_bucket">B2 Bucket Name</string>
+    <string name="action_connect">Connect</string>
+
+    <string name="error_blank_fields">All fields are required.</string>
+    <string name="error_invalid_key_id">Invalid Application Key ID.</string>
+    <string name="error_invalid_app_key">Invalid Application Key.</string>
+    <string name="error_bucket_not_found">Bucket not found.</string>
+    <string name="error_network">Couldn\'t reach Backblaze. Check your connection.</string>
+    <string name="error_generic_format">Could not connect: %1$s</string>
+
+    <string name="title_gallery">Photo Backup</string>
+    <string name="upload_failed">Upload failed</string>
+    <string name="already_uploaded">Already uploaded</string>
+    <string name="permission_rationale">Photo Backup needs access to your photos to back them up.</string>
+    <string name="permission_denied">Photos permission denied. Cannot show gallery.</string>
+
+    <string name="info_title">Photo info</string>
+    <string name="info_filename">Filename: %1$s</string>
+    <string name="info_size">Size: %1$s</string>
+    <string name="info_date">Date: %1$s</string>
+    <string name="ok">OK</string>
+</resources>
