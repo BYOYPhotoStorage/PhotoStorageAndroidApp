@@ -1,4 +1,4 @@
-package com.photobackup.app.b2
+package com.hriyaan.photostorage.b2
 
 import java.text.SimpleDateFormat
 import java.util.Date

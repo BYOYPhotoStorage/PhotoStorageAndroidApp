@@ -1,10 +1,10 @@
-package com.photobackup.app
+package com.hriyaan.photostorage
 
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import com.photobackup.app.ui.GalleryActivity
-import com.photobackup.app.ui.OnboardingActivity
+import com.hriyaan.photostorage.ui.GalleryActivity
+import com.hriyaan.photostorage.ui.OnboardingActivity
 
 class MainActivity : AppCompatActivity() {
 

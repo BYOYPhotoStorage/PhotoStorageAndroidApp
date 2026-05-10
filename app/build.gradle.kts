@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.photobackup.app"
+    namespace = "com.hriyaan.photostorage"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.photobackup.app"
+        applicationId = "com.hriyaan.photostorage"
         minSdk = 33
         targetSdk = 34
         versionCode = 1
@@ -16,9 +16,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!System.getenv("KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -1,4 +1,4 @@
-package com.photobackup.app.data
+package com.hriyaan.photostorage.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase

@@ -1,4 +1,4 @@
-package com.photobackup.app.b2
+package com.hriyaan.photostorage.b2
 
 data class S3Config(
     val region: String,

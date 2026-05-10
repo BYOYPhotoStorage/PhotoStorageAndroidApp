@@ -1,4 +1,4 @@
-package com.photobackup.app.data
+package com.hriyaan.photostorage.data
 
 data class UploadRecord(
     val id: Long = 0L,

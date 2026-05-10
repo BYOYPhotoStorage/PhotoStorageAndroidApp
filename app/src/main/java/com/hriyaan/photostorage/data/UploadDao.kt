@@ -1,18 +1,18 @@
-package com.photobackup.app.data
+package com.hriyaan.photostorage.data
 
 import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteOpenHelper
-import com.photobackup.app.data.UploadDatabase.Companion.COL_DATE_TAKEN
-import com.photobackup.app.data.UploadDatabase.Companion.COL_FILENAME
-import com.photobackup.app.data.UploadDatabase.Companion.COL_ID
-import com.photobackup.app.data.UploadDatabase.Companion.COL_LOCAL_URI
-import com.photobackup.app.data.UploadDatabase.Companion.COL_PHOTO_B2_PATH
-import com.photobackup.app.data.UploadDatabase.Companion.COL_SIZE
-import com.photobackup.app.data.UploadDatabase.Companion.COL_STATUS
-import com.photobackup.app.data.UploadDatabase.Companion.COL_THUMBNAIL_B2_PATH
-import com.photobackup.app.data.UploadDatabase.Companion.COL_UPLOADED_AT
-import com.photobackup.app.data.UploadDatabase.Companion.TABLE_UPLOADS
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_DATE_TAKEN
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_FILENAME
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_ID
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_LOCAL_URI
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_PHOTO_B2_PATH
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_SIZE
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_STATUS
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_THUMBNAIL_B2_PATH
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_UPLOADED_AT
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.TABLE_UPLOADS
 
 class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
 

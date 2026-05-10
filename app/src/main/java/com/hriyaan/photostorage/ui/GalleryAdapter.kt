@@ -1,13 +1,13 @@
-package com.photobackup.app.ui
+package com.hriyaan.photostorage.ui
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.photobackup.app.R
-import com.photobackup.app.data.UploadDao
-import com.photobackup.app.databinding.ItemGalleryBinding
+import com.hriyaan.photostorage.R
+import com.hriyaan.photostorage.data.UploadDao
+import com.hriyaan.photostorage.databinding.ItemGalleryBinding
 
 class GalleryAdapter(
     private val onTap: (GalleryItem) -> Unit,

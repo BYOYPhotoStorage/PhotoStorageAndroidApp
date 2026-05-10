@@ -1,8 +1,8 @@
-package com.photobackup.app
+package com.hriyaan.photostorage
 
 import android.app.Application
-import com.photobackup.app.data.PrefsStore
-import com.photobackup.app.data.UploadDatabase
+import com.hriyaan.photostorage.data.PrefsStore
+import com.hriyaan.photostorage.data.UploadDatabase
 
 class PhotoBackupApp : Application() {
 

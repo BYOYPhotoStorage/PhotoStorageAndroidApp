@@ -1,4 +1,4 @@
-package com.photobackup.app.ui
+package com.hriyaan.photostorage.ui
 
 import android.app.AlertDialog
 import android.os.Bundle
@@ -8,18 +8,18 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import aws.smithy.kotlin.runtime.content.ByteStream
-import com.photobackup.app.PhotoBackupApp
-import com.photobackup.app.R
-import com.photobackup.app.b2.S3ClientFactory
-import com.photobackup.app.b2.S3Config
-import com.photobackup.app.b2.S3KeyBuilder
-import com.photobackup.app.b2.S3Uploader
-import com.photobackup.app.data.MediaStoreQuery
-import com.photobackup.app.data.PhotoPermission
-import com.photobackup.app.data.UploadDao
-import com.photobackup.app.data.UploadRecord
-import com.photobackup.app.databinding.ActivityGalleryBinding
-import com.photobackup.app.thumbnail.ThumbnailGen
+import com.hriyaan.photostorage.PhotoBackupApp
+import com.hriyaan.photostorage.R
+import com.hriyaan.photostorage.b2.S3ClientFactory
+import com.hriyaan.photostorage.b2.S3Config
+import com.hriyaan.photostorage.b2.S3KeyBuilder
+import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.MediaStoreQuery
+import com.hriyaan.photostorage.data.PhotoPermission
+import com.hriyaan.photostorage.data.UploadDao
+import com.hriyaan.photostorage.data.UploadRecord
+import com.hriyaan.photostorage.databinding.ActivityGalleryBinding
+import com.hriyaan.photostorage.thumbnail.ThumbnailGen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

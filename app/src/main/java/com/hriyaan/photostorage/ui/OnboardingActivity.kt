@@ -1,4 +1,4 @@
-package com.photobackup.app.ui
+package com.hriyaan.photostorage.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -7,14 +7,14 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import aws.sdk.kotlin.services.s3.model.NoSuchBucket
 import aws.sdk.kotlin.services.s3.model.S3Exception
-import com.photobackup.app.PhotoBackupApp
-import com.photobackup.app.R
-import com.photobackup.app.b2.S3ClientFactory
-import com.photobackup.app.b2.S3Config
-import com.photobackup.app.b2.S3Uploader
-import com.photobackup.app.data.B2Credentials
-import com.photobackup.app.data.PrefsStore
-import com.photobackup.app.databinding.ActivityOnboardingBinding
+import com.hriyaan.photostorage.PhotoBackupApp
+import com.hriyaan.photostorage.R
+import com.hriyaan.photostorage.b2.S3ClientFactory
+import com.hriyaan.photostorage.b2.S3Config
+import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.B2Credentials
+import com.hriyaan.photostorage.data.PrefsStore
+import com.hriyaan.photostorage.databinding.ActivityOnboardingBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

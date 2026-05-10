@@ -1,4 +1,4 @@
-package com.photobackup.app.thumbnail
+package com.hriyaan.photostorage.thumbnail
 
 import android.content.Context
 import android.graphics.Bitmap

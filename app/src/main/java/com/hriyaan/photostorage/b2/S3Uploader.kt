@@ -1,4 +1,4 @@
-package com.photobackup.app.b2
+package com.hriyaan.photostorage.b2
 
 import aws.sdk.kotlin.services.s3.S3Client
 import aws.sdk.kotlin.services.s3.model.ListBucketsRequest

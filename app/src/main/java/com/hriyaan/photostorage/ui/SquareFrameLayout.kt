@@ -1,4 +1,4 @@
-package com.photobackup.app.ui
+package com.hriyaan.photostorage.ui
 
 import android.content.Context
 import android.util.AttributeSet

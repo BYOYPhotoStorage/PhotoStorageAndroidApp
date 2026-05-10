@@ -1,4 +1,4 @@
-package com.photobackup.app.data
+package com.hriyaan.photostorage.data
 
 import android.Manifest
 import android.content.Context
