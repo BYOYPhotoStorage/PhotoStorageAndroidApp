@@ -1,0 +1,249 @@
+name: Claude Android Fix - Issue to PR with Test Iteration
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to fix'
+        required: true
+      max_build_iterations:
+        description: 'Max build fix attempts'
+        required: false
+        default: '5'
+      max_test_iterations:
+        description: 'Max test fix attempts'
+        required: false
+        default: '5'
+
+env:
+  # -- Gradle Configuration --
+  GRADLE_OPTS: >-
+    -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC"
+    -Dorg.gradle.daemon=false
+    -Dorg.gradle.workers.max=2
+  CI: "true"
+
+  # -- Claude Configuration --
+  CLAUDE_MAX_TURNS_INITIAL: "30"
+  CLAUDE_MAX_TURNS_FIX: "20"
+  CLAUDE_MAX_BUDGET_USD: "10.00"
+  ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/"
+
+  # -- Iteration Limits --
+  MAX_BUILD_ITERATIONS: ${{ github.event.inputs.max_build_iterations || '5' }}
+  MAX_TEST_ITERATIONS: ${{ github.event.inputs.max_test_iterations || '5' }}
+
+  # -- Test Commands --
+  BUILD_CMD: "./gradlew build --console=plain --quiet"
+  TEST_CMD: "./gradlew test --console=plain --quiet"
+  LINT_CMD: "./gradlew lint --console=plain --quiet"
+
+jobs:
+  claude-fix-and-verify:
+    # -- Trigger Conditions --
+    if: |
+      (github.event_name == 'issues' &&
+       contains(github.event.issue.labels.*.name, 'ai-fix')) ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude') &&
+       github.event.comment.user.type != 'Bot') ||
+      (github.event_name == 'workflow_dispatch')
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+
+    steps:
+      # =============================================
+      # PHASE 1: Environment Setup
+      # =============================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-home-cache-cleanup: true
+          cache-read-only: false
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Verify Gradle setup
+        run: ./gradlew --version
+
+      # =============================================
+      # PHASE 2: Install Claude Code CLI
+      # =============================================
+      - name: Install Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ env.ANTHROPIC_BASE_URL }}
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          claude --version
+
+      # =============================================
+      # PHASE 3: Initial Fix (via official action)
+      # =============================================
+      - name: Claude Code - Initial Fix
+        id: claude-initial
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: ${{ env.ANTHROPIC_BASE_URL }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            ## Task
+            Fix GitHub issue #${{ github.event.issue.number || github.event.inputs.issue_number }}.
+
+            ## Context
+            Read the file `.claude/CLAUDE.md` for project conventions.
+
+            ## Instructions
+            1. Read the issue description carefully
+            2. Explore the codebase to understand the relevant code
+            3. Implement the minimal fix to resolve the issue
+            4. Do NOT run tests or build commands -- only fix the code
+            5. Do NOT create a PR -- just commit changes to the current branch
+
+            ## Rules
+            - Make the smallest possible change that fixes the issue
+            - Do not refactor unrelated code
+            - Do not add comments explaining the change
+            - Follow existing code style and patterns
+          claude_args: >
+            --model claude-sonnet-4
+            --max-turns ${{ env.CLAUDE_MAX_TURNS_INITIAL }}
+            --max-budget-usd ${{ env.CLAUDE_MAX_BUDGET_USD }}
+            --allowedTools "Read,Edit,Write,Bash(ls),Bash(find),Bash(grep)"
+            --permission-mode acceptEdits
+            --verbose
+
+      - name: Check initial fix status
+        if: steps.claude-initial.outputs.conclusion == 'failure'
+        run: |
+          echo "Claude initial fix failed"
+          exit 1
+
+      # =============================================
+      # PHASE 4: Build Verification Loop
+      # =============================================
+      - name: Build Verification Loop
+        id: build-loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ env.ANTHROPIC_BASE_URL }}
+        run: |
+          set -e
+          source scripts/test-iterate.sh
+          run_build_loop \
+            "$BUILD_CMD" \
+            "$MAX_BUILD_ITERATIONS" \
+            "$CLAUDE_MAX_TURNS_FIX" \
+            "${{ github.workspace }}/build-reports"
+
+      # =============================================
+      # PHASE 5: Test Verification Loop
+      # =============================================
+      - name: Test Verification Loop
+        id: test-loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ env.ANTHROPIC_BASE_URL }}
+        run: |
+          set -e
+          source scripts/test-iterate.sh
+          run_test_loop \
+            "$TEST_CMD" \
+            "$MAX_TEST_ITERATIONS" \
+            "$CLAUDE_MAX_TURNS_FIX" \
+            "${{ github.workspace }}/test-reports"
+
+      # =============================================
+      # PHASE 6: Lint Check (non-blocking)
+      # =============================================
+      - name: Lint Check
+        id: lint-check
+        continue-on-error: true
+        run: |
+          $LINT_CMD || echo "LINT_WARNINGS=true" >> $GITHUB_ENV
+
+      # =============================================
+      # PHASE 7: Metrics Collection
+      # =============================================
+      - name: Collect Metrics
+        id: metrics
+        run: |
+          echo "build_iterations=${{ steps.build-loop.outputs.iterations }}" >> $GITHUB_OUTPUT
+          echo "test_iterations=${{ steps.test-loop.outputs.iterations }}" >> $GITHUB_OUTPUT
+          echo "total_cost=${{ steps.claude-initial.outputs.total_cost_usd }}" >> $GITHUB_OUTPUT
+          echo "lint_warnings=${{ env.LINT_WARNINGS }}" >> $GITHUB_OUTPUT
+
+      # =============================================
+      # PHASE 8: Pull Request Creation
+      # =============================================
+      - name: Create Pull Request
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: claude/fix-issue-${{ github.event.issue.number || github.event.inputs.issue_number }}
+          delete-branch: false
+          commit-message: |
+            fix: resolve issue #${{ github.event.issue.number || github.event.inputs.issue_number }}
+
+            AI-generated fix with test verification.
+          title: |
+            Fix: ${{ github.event.issue.title || 'AI-generated fix' }} (Claude)
+          body: |
+            ## AI-Generated Fix
+
+            This PR fixes #${{ github.event.issue.number || github.event.inputs.issue_number }}.
+
+            ### Verification Results
+            | Check | Status | Iterations |
+            |-------|--------|------------|
+            | Build | Passed | ${{ steps.build-loop.outputs.iterations }} |
+            | Unit Tests | All Passed | ${{ steps.test-loop.outputs.iterations }} |
+            | Lint | ${{ env.LINT_WARNINGS == 'true' && 'Warnings' || 'Clean' }} | - |
+
+            ### Cost
+            - Claude API cost: ~$${{ steps.metrics.outputs.total_cost }}
+
+            ### Notes
+            - All changes were generated by Claude Code
+            - Tests were run iteratively until all passed
+            - Please review carefully before merging
+          labels: |
+            ai-generated
+            needs-review
+            claude-fix
+
+      - name: Comment on issue
+        run: |
+          gh issue comment ${{ github.event.issue.number || github.event.inputs.issue_number }} \
+            --body "Claude has implemented a fix. PR #${{ steps.create-pr.outputs.pull-request-number }} is ready for review."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
