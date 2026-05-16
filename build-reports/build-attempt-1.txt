@@ -1,0 +1,1 @@
+Wrote HTML report to file:///home/runner/work/PhotoStorageAndroidApp/PhotoStorageAndroidApp/app/build/reports/lint-results-debug.html
