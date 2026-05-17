@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import aws.smithy.kotlin.runtime.content.ByteStream
-import aws.smithy.kotlin.runtime.content.fromFile
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
@@ -25,13 +24,6 @@ class IndexSyncWorker(
         val prefs = app.prefsStore
         val creds = prefs.getCredentials() ?: return@withContext Result.success()
 
-        try {
-            app.uploadDatabase.writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-        } catch (t: Throwable) {
-            Log.w(TAG, "WAL checkpoint failed", t)
-            return@withContext Result.retry()
-        }
-
         val src = applicationContext.getDatabasePath("uploads.db")
         if (!src.exists()) return@withContext Result.success()
 
@@ -49,8 +41,11 @@ class IndexSyncWorker(
             val hash = sha256Hex(temp)
 
             if (hash == prefs.getLastSyncedIndexHash()) {
+                Log.i(TAG, "Index unchanged, skipping upload")
                 return@withContext Result.success()
             }
+
+            val bytes = temp.readBytes()
 
             val config = S3Config.forBucket(creds.bucketName)
             val client = S3ClientFactory.create(creds, config)
@@ -58,14 +53,15 @@ class IndexSyncWorker(
             val uploadResult = uploader.upload(
                 key = INDEX_B2_PATH,
                 contentType = "application/octet-stream",
-                contentLength = temp.length(),
-                body = ByteStream.fromFile(temp)
+                contentLength = bytes.size.toLong(),
+                body = ByteStream.fromBytes(bytes)
             )
             if (uploadResult.isFailure) {
                 Log.w(TAG, "Index upload failed", uploadResult.exceptionOrNull())
                 return@withContext Result.retry()
             }
 
+            Log.i(TAG, "Index uploaded to $INDEX_B2_PATH")
             prefs.setLastSyncedIndexHash(hash)
             prefs.setLastIndexSyncAt(System.currentTimeMillis())
             Result.success()

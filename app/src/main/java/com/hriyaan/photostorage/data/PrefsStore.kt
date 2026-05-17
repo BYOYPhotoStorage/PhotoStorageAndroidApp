@@ -271,6 +271,39 @@ class PrefsStore(context: Context) {
         prefs.edit().putLong(KEY_EGRESS_MONTH_ANCHOR, timestamp).apply()
     }
 
+    fun isDiagnosticsEnabled(): Boolean {
+        if (!prefs.getBoolean(KEY_DIAGNOSTICS_ENABLED, false)) return false
+        val startedAt = prefs.getLong(KEY_DIAGNOSTICS_STARTED_AT, 0L)
+        if (startedAt == 0L) return false
+        if (System.currentTimeMillis() - startedAt > DIAGNOSTICS_TIMEOUT_MS) {
+            prefs.edit()
+                .putBoolean(KEY_DIAGNOSTICS_ENABLED, false)
+                .remove(KEY_DIAGNOSTICS_STARTED_AT)
+                .apply()
+            return false
+        }
+        return true
+    }
+
+    fun setDiagnosticsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DIAGNOSTICS_ENABLED, enabled).apply()
+    }
+
+    fun getDiagnosticsStartedAt(): Long? {
+        val value = prefs.getLong(KEY_DIAGNOSTICS_STARTED_AT, 0L)
+        return if (value == 0L) null else value
+    }
+
+    fun setDiagnosticsStartedAt(timestamp: Long?) {
+        val editor = prefs.edit()
+        if (timestamp == null) {
+            editor.remove(KEY_DIAGNOSTICS_STARTED_AT)
+        } else {
+            editor.putLong(KEY_DIAGNOSTICS_STARTED_AT, timestamp)
+        }
+        editor.apply()
+    }
+
     fun registerOnChangedListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }
@@ -314,6 +347,9 @@ class PrefsStore(context: Context) {
         private const val KEY_LOCAL_DELETE_DISMISS_STREAK = "local_delete_dismiss_streak"
         private const val KEY_EGRESS_BYTES_MONTH = "cost_dashboard_egress_bytes_month"
         private const val KEY_EGRESS_MONTH_ANCHOR = "cost_dashboard_egress_month_anchor"
+        private const val KEY_DIAGNOSTICS_ENABLED = "diagnostics_enabled"
+        private const val KEY_DIAGNOSTICS_STARTED_AT = "diagnostics_started_at"
+        private const val DIAGNOSTICS_TIMEOUT_MS = 15L * 60L * 1000L
 
         private const val MODE_LOCAL = "local"
         private const val MODE_CLOUD = "cloud"

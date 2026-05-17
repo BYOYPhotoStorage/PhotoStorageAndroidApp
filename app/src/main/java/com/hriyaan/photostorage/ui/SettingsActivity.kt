@@ -19,10 +19,12 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import aws.smithy.kotlin.runtime.content.ByteStream
 import com.google.android.material.appbar.MaterialToolbar
 import com.hriyaan.photostorage.MainActivity
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.recovery.IndexRecoveryActivity
 import com.hriyaan.photostorage.service.UploadForegroundService
@@ -32,6 +34,9 @@ import com.hriyaan.photostorage.worker.NightlyScanScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -65,6 +70,7 @@ class SettingsActivity : AppCompatActivity() {
         bindIndexSection()
         bindSharingSection()
         bindAccountSection()
+        bindDiagnosticsSection()
         bindAboutSection()
 
         refreshAll()
@@ -82,6 +88,7 @@ class SettingsActivity : AppCompatActivity() {
         updateStorageConditionalVisibility()
         updateLastIndexSync()
         updateShareLinksCount()
+        updateDiagnosticsStatus()
         updateAboutSection()
         setSectionEnabled(R.id.row_timing, autoUpload)
         setSectionEnabled(R.id.row_wifi_only, autoUpload)
@@ -396,6 +403,109 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun bindDiagnosticsSection() {
+        val switch = findViewById<Switch>(R.id.switch_diagnostics)
+        switch.setOnCheckedChangeListener { _, isChecked ->
+            val logger = FileLogger.getInstance(this)
+            if (isChecked) {
+                logger.start()
+            } else {
+                logger.stop()
+            }
+            updateDiagnosticsStatus()
+        }
+
+        findViewById<Button>(R.id.btn_upload_logs).setOnClickListener {
+            uploadLogs()
+        }
+        findViewById<Button>(R.id.btn_clear_logs).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.settings_diagnostics_clear_confirm)
+                .setPositiveButton(R.string.settings_diagnostics_clear) { _, _ ->
+                    clearLogs()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+    }
+
+    private fun updateDiagnosticsStatus() {
+        val logger = FileLogger.getInstance(this)
+        val isRunning = logger.isRunning()
+        val startedAt = prefs.getDiagnosticsStartedAt()
+
+        findViewById<Switch>(R.id.switch_diagnostics).isChecked = isRunning
+
+        val statusText = when {
+            isRunning && startedAt != null -> {
+                val elapsed = System.currentTimeMillis() - startedAt
+                val remainingMin = ((DIAGNOSTICS_TIMEOUT_MS - elapsed).coerceAtLeast(0) / 60_000).toInt()
+                getString(R.string.settings_diagnostics_status_running, remainingMin.coerceAtLeast(1))
+            }
+            !isRunning && startedAt != null -> getString(R.string.settings_diagnostics_status_auto_stopped)
+            else -> getString(R.string.settings_diagnostics_status_stopped)
+        }
+        findViewById<TextView>(R.id.diagnostics_status).text = statusText
+    }
+
+    private fun uploadLogs() {
+        val uploader = app.s3Uploader
+        if (uploader == null) {
+            Toast.makeText(this, R.string.settings_diagnostics_upload_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val logger = FileLogger.getInstance(this)
+        val logFile = logger.getLogFile()
+        if (logFile == null) {
+            Toast.makeText(this, R.string.settings_diagnostics_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, R.string.settings_diagnostics_uploading, Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = logFile.readBytes()
+                    uploader.upload(
+                        key = LOGS_B2_PATH,
+                        contentType = "text/plain",
+                        contentLength = bytes.size.toLong(),
+                        body = ByteStream.fromBytes(bytes)
+                    ).getOrThrow()
+                }
+            }
+            result.fold(
+                onSuccess = {
+                    Toast.makeText(this@SettingsActivity, R.string.settings_diagnostics_uploaded, Toast.LENGTH_SHORT).show()
+                },
+                onFailure = {
+                    Toast.makeText(this@SettingsActivity, R.string.settings_diagnostics_upload_failed, Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+    }
+
+    private fun clearLogs() {
+        val logger = FileLogger.getInstance(this)
+        logger.clear()
+        logger.stop()
+
+        val uploader = app.s3Uploader
+        if (uploader != null) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    uploader.deleteObject(LOGS_B2_PATH)
+                }
+                updateDiagnosticsStatus()
+                Toast.makeText(this@SettingsActivity, R.string.settings_diagnostics_cleared, Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            updateDiagnosticsStatus()
+            Toast.makeText(this, R.string.settings_diagnostics_cleared, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun bindAboutSection() {
         findViewById<TextView>(R.id.about_repo).setOnClickListener {
             startActivity(
@@ -418,5 +528,10 @@ class SettingsActivity : AppCompatActivity() {
         } ?: "Not configured"
         findViewById<TextView>(R.id.about_endpoint).text =
             getString(R.string.settings_about_endpoint, endpoint)
+    }
+
+    companion object {
+        private const val LOGS_B2_PATH = "logs/app.log"
+        private val DIAGNOSTICS_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(15)
     }
 }
