@@ -1,6 +1,9 @@
 name: Firebase App Distribution
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_notes:
@@ -45,6 +48,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
         run: ./gradlew :app:assembleRelease
 
       - name: Upload to Firebase App Distribution
@@ -52,8 +57,8 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: ${{ github.event.inputs.tester_groups }}
-          releaseNotes: ${{ github.event.inputs.release_notes }}
+          groups: ${{ github.event.inputs.tester_groups || 'qa-testers' }}
+          releaseNotes: ${{ github.event.inputs.release_notes || github.event.head_commit.message }}
           file: app/build/outputs/apk/release/app-release.apk
 
       - name: Upload APK as workflow artifact

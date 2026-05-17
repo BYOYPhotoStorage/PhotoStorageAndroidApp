@@ -77,4 +77,8 @@
     <string name="recovery_replace_confirm">This will replace your current index. Continue?</string>
     <string name="recovery_index_too_new">The cloud index uses a newer format than this app supports. Please update the app and try again.</string>
     <string name="recovery_index_invalid">The downloaded index is not valid.</string>
+
+    <string name="action_about">About</string>
+    <string name="about_title">About Photo Backup</string>
+    <string name="about_version">Version %1$s (build %2$d)</string>
 </resources>

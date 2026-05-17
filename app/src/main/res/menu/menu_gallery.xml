@@ -9,4 +9,8 @@
         android:id="@+id/action_restore_index"
         android:title="@string/action_restore_index"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_about"
+        android:title="@string/action_about"
+        app:showAsAction="never" />
 </menu>

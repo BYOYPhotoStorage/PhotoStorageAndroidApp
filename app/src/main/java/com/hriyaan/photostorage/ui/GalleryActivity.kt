@@ -245,6 +245,10 @@ class GalleryActivity : AppCompatActivity() {
                 )
                 true
             }
+            R.id.action_about -> {
+                showAboutDialog()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -323,6 +327,20 @@ class GalleryActivity : AppCompatActivity() {
         } else {
             getString(R.string.index_synced_at, DateUtils.getRelativeTimeSpanString(ts))
         }
+    }
+
+    private fun showAboutDialog() {
+        val info = packageManager.getPackageInfo(
+            packageName,
+            PackageManager.PackageInfoFlags.of(0L)
+        )
+        val versionName = info.versionName.orEmpty()
+        val versionCode = info.longVersionCode
+        AlertDialog.Builder(this)
+            .setTitle(R.string.about_title)
+            .setMessage(getString(R.string.about_version, versionName, versionCode))
+            .setPositiveButton(R.string.ok, null)
+            .show()
     }
 
     private fun onTap(item: GalleryItem) {
