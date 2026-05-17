@@ -65,7 +65,7 @@ class UploadForegroundService : Service() {
         uploadDao = app.uploadDatabase.dao
         prefsStore = app.prefsStore
         notificationManager = UploadNotificationManager(this)
-        duplicateDetector = DuplicateDetector(uploadDao)
+        duplicateDetector = DuplicateDetector(this, uploadDao)
 
         val creds = prefsStore.getCredentials()
         if (creds != null) {
