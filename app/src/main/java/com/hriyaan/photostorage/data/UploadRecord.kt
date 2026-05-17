@@ -9,5 +9,9 @@ data class UploadRecord(
     val photoB2Path: String?,
     val thumbnailB2Path: String?,
     val status: String,
-    val uploadedAt: Long?
+    val uploadedAt: Long?,
+    val retryCount: Int = 0,
+    val nextRetryAt: Long? = null,
+    val sha256: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
 )
