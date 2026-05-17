@@ -32,13 +32,17 @@ class UploadDatabase(context: Context) {
                     $COL_RETRY_COUNT INTEGER NOT NULL DEFAULT 0,
                     $COL_NEXT_RETRY_AT INTEGER,
                     $COL_SHA256 TEXT,
-                    $COL_CREATED_AT INTEGER NOT NULL DEFAULT 0
+                    $COL_CREATED_AT INTEGER NOT NULL DEFAULT 0,
+                    $COL_LOCAL_PRESENT INTEGER NOT NULL DEFAULT 1,
+                    $COL_CLOUD_DELETED_AT INTEGER
                 )
                 """.trimIndent()
             )
             db.execSQL("CREATE INDEX idx_status ON $TABLE_UPLOADS($COL_STATUS)")
             db.execSQL("CREATE INDEX idx_filename_size ON $TABLE_UPLOADS($COL_FILENAME, $COL_SIZE)")
             db.execSQL("CREATE INDEX idx_sha256 ON $TABLE_UPLOADS($COL_SHA256)")
+            db.execSQL("CREATE INDEX idx_cloud_deleted_at ON $TABLE_UPLOADS($COL_CLOUD_DELETED_AT)")
+            db.execSQL("CREATE INDEX idx_date_taken ON $TABLE_UPLOADS($COL_DATE_TAKEN)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -49,7 +53,7 @@ class UploadDatabase(context: Context) {
 
     internal companion object {
         const val DB_NAME = "uploads.db"
-        const val DB_VERSION = 2
+        const val DB_VERSION = 3
 
         const val TABLE_UPLOADS = "uploads"
         const val COL_ID = "id"
@@ -65,5 +69,7 @@ class UploadDatabase(context: Context) {
         const val COL_NEXT_RETRY_AT = "next_retry_at"
         const val COL_SHA256 = "sha256"
         const val COL_CREATED_AT = "created_at"
+        const val COL_LOCAL_PRESENT = "local_present"
+        const val COL_CLOUD_DELETED_AT = "cloud_deleted_at"
     }
 }
