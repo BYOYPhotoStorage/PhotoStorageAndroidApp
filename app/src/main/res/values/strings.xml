@@ -141,6 +141,7 @@
     <string name="first_backup_videos_permission_denied">Videos disabled — permission denied.</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
     <string name="settings_section_backup">Backup</string>
     <string name="settings_auto_upload">Auto-upload</string>
     <string name="settings_timing">Backup timing</string>

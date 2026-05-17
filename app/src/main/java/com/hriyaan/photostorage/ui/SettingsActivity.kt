@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.MaterialToolbar
 import com.hriyaan.photostorage.MainActivity
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
@@ -52,6 +53,10 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         title = getString(R.string.settings_title)
+
+        findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener {
+            finish()
+        }
 
         bindBackupSection()
         bindVideosSection()
