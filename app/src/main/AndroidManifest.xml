@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -49,6 +50,32 @@
             android:theme="@style/Theme.PhotoBackup"
             android:configChanges="orientation|screenSize|screenLayout" />
 
+        <activity
+            android:name=".ui.FirstBackupActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup"
+            android:configChanges="orientation|screenSize|screenLayout" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup" />
+
+        <activity
+            android:name=".ui.CostDashboardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup" />
+
+        <activity
+            android:name=".ui.ActiveShareLinksActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup" />
+
+        <activity
+            android:name=".ui.LocalDeleteReviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup" />
+
         <service
             android:name=".service.UploadForegroundService"
             android:foregroundServiceType="dataSync"
@@ -61,6 +88,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".receiver.DeleteIntentReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

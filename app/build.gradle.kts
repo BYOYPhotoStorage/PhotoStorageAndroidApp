@@ -81,6 +81,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.work.runtime.ktx)
 
+    implementation(libs.androidx.media3.common)
+    implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.media3.effect)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
 }

@@ -1,11 +1,10 @@
 package com.hriyaan.photostorage.service
 
 import android.app.Service
-import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.database.ContentObserver
-import android.net.Uri
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -22,6 +21,9 @@ import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.dedup.DuplicateDetector
 import com.hriyaan.photostorage.gallery.GalleryRepository
+import com.hriyaan.photostorage.media.MediaItem
+import com.hriyaan.photostorage.media.MediaStoreScanner
+import com.hriyaan.photostorage.media.MediaType
 import com.hriyaan.photostorage.notification.UploadNotificationManager
 import com.hriyaan.photostorage.thumbnail.ThumbnailGen
 import com.hriyaan.photostorage.worker.UploadWorker
@@ -40,6 +42,7 @@ class UploadForegroundService : Service() {
     private lateinit var notificationManager: UploadNotificationManager
     private lateinit var duplicateDetector: DuplicateDetector
     private lateinit var galleryRepository: GalleryRepository
+    private lateinit var scanner: MediaStoreScanner
     private var uploadWorker: UploadWorker? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -53,10 +56,18 @@ class UploadForegroundService : Service() {
         }
     }
 
-    private val contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+    private val imageObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
-            handler.removeCallbacks(debounceRunnable)
-            handler.postDelayed(debounceRunnable, DEBOUNCE_MS)
+            scheduleDebouncedScan()
+        }
+    }
+
+    private var videoObserver: ContentObserver? = null
+
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == KEY_VIDEOS_ENABLED) {
+            if (prefsStore.getVideosEnabled()) registerVideoObserver()
+            else unregisterVideoObserver()
         }
     }
 
@@ -69,6 +80,7 @@ class UploadForegroundService : Service() {
         notificationManager = UploadNotificationManager(this)
         duplicateDetector = DuplicateDetector(this, uploadDao)
         galleryRepository = app.galleryRepository
+        scanner = MediaStoreScanner(this)
 
         val creds = prefsStore.getCredentials()
         if (creds != null) {
@@ -93,8 +105,10 @@ class UploadForegroundService : Service() {
         contentResolver.registerContentObserver(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             true,
-            contentObserver
+            imageObserver
         )
+        if (prefsStore.getVideosEnabled()) registerVideoObserver()
+        prefsStore.registerOnChangedListener(prefsListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -102,7 +116,9 @@ class UploadForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        contentResolver.unregisterContentObserver(contentObserver)
+        contentResolver.unregisterContentObserver(imageObserver)
+        unregisterVideoObserver()
+        prefsStore.unregisterOnChangedListener(prefsListener)
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
         super.onDestroy()
@@ -110,39 +126,66 @@ class UploadForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun registerVideoObserver() {
+        if (videoObserver != null) return
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                scheduleDebouncedScan()
+            }
+        }
+        contentResolver.registerContentObserver(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            true,
+            observer
+        )
+        videoObserver = observer
+    }
+
+    private fun unregisterVideoObserver() {
+        videoObserver?.let { contentResolver.unregisterContentObserver(it) }
+        videoObserver = null
+    }
+
+    private fun scheduleDebouncedScan() {
+        handler.removeCallbacks(debounceRunnable)
+        handler.postDelayed(debounceRunnable, DEBOUNCE_MS)
+    }
+
     private suspend fun handleMediaChange() {
         val lastScan = prefsStore.getLastScanTimestamp()
-        val photos = queryNewPhotos(lastScan)
+        val sinceArg = lastScan.takeIf { it > 0L }
+        val items = scanner.scanImages(sinceArg) + scanner.scanVideos(sinceArg)
 
         var newestTimestamp = lastScan
-        for (photo in photos) {
-            val dupResult = duplicateDetector.isDuplicate(photo)
+        for (item in items) {
+            val dupResult = duplicateDetector.isDuplicate(item.toMediaStorePhoto())
             if (dupResult is com.hriyaan.photostorage.dedup.DuplicateResult.Duplicate) {
                 continue
             }
 
-            val photoPath = S3KeyBuilder.photoKey(photo.filename, photo.dateTakenMs)
-            val thumbPath = S3KeyBuilder.thumbnailKey(photo.filename, photo.dateTakenMs)
+            val photoPath = S3KeyBuilder.photoKey(item.filename, item.dateTaken)
+            val thumbPath = S3KeyBuilder.thumbnailKey(item.filename, item.dateTaken)
 
             uploadDao.insert(
                 UploadRecord(
-                    localUri = photo.uri.toString(),
-                    filename = photo.filename,
-                    size = photo.size,
-                    dateTaken = photo.dateTakenMs,
+                    localUri = item.uri.toString(),
+                    filename = item.filename,
+                    size = item.size,
+                    dateTaken = item.dateTaken,
                     photoB2Path = photoPath,
                     thumbnailB2Path = thumbPath,
                     status = UploadDao.STATUS_PENDING,
-                    uploadedAt = null
+                    uploadedAt = null,
+                    mediaType = item.mediaType.toDbValue()
                 )
             )
 
-            if (photo.dateTakenMs > newestTimestamp) {
-                newestTimestamp = photo.dateTakenMs
+            if (item.dateTaken > newestTimestamp) {
+                newestTimestamp = item.dateTaken
             }
         }
 
-        if (photos.isEmpty()) {
+        if (items.isEmpty()) {
             prefsStore.setLastScanTimestamp(System.currentTimeMillis())
         } else {
             prefsStore.setLastScanTimestamp(newestTimestamp)
@@ -152,49 +195,13 @@ class UploadForegroundService : Service() {
         triggerWorker()
     }
 
-    private fun queryNewPhotos(lastScanTimestamp: Long): List<MediaStorePhoto> {
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATE_TAKEN
-        )
-
-        val sinceSeconds = lastScanTimestamp / 1000
-        val cursor = contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            "${MediaStore.Images.Media.DATE_ADDED} > ?",
-            arrayOf(sinceSeconds.toString()),
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        ) ?: return emptyList()
-
-        cursor.use { c ->
-            val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val sizeCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            val dateCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
-
-            val out = ArrayList<MediaStorePhoto>(c.count)
-            while (c.moveToNext()) {
-                val id = c.getLong(idCol)
-                val filename = c.getString(nameCol) ?: continue
-                val size = c.getLong(sizeCol)
-                val dateTaken = if (c.isNull(dateCol)) 0L else c.getLong(dateCol)
-                out += MediaStorePhoto(
-                    id = id,
-                    uri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        id
-                    ),
-                    filename = filename,
-                    size = size,
-                    dateTakenMs = dateTaken
-                )
-            }
-            return out
-        }
-    }
+    private fun MediaItem.toMediaStorePhoto(): MediaStorePhoto = MediaStorePhoto(
+        id = 0L,
+        uri = uri,
+        filename = filename,
+        size = size,
+        dateTakenMs = dateTaken
+    )
 
     private fun triggerWorker() {
         val worker = uploadWorker ?: return
@@ -213,6 +220,7 @@ class UploadForegroundService : Service() {
 
     companion object {
         private const val DEBOUNCE_MS = 3000L
+        private const val KEY_VIDEOS_ENABLED = "videos_enabled"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(

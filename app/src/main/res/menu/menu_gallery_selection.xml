@@ -2,6 +2,10 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_share_link"
+        android:title="@string/action_share_link"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_delete"
         android:icon="@drawable/ic_delete"
         android:title="@string/action_delete"

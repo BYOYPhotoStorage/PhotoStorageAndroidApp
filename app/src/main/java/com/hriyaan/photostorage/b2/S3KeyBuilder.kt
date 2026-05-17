@@ -19,5 +19,13 @@ object S3KeyBuilder {
         return "thumbnails/${formatDate(dateTakenMs)}/$basename.webp"
     }
 
+    fun videoKey(filename: String, dateTakenMs: Long): String =
+        "videos/${formatDate(dateTakenMs)}/$filename"
+
+    fun compressedVideoKey(filename: String, dateTakenMs: Long): String {
+        val basename = filename.substringBeforeLast('.', filename)
+        return "videos/${formatDate(dateTakenMs)}/$basename.compressed.mp4"
+    }
+
     private fun formatDate(ms: Long): String = dateFormat.format(Date(ms))
 }

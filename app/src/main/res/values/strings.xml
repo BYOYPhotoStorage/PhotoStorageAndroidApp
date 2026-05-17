@@ -81,4 +81,113 @@
     <string name="action_about">About</string>
     <string name="about_title">About Photo Backup</string>
     <string name="about_version">Version %1$s (build %2$d)</string>
+
+    <string name="local_delete_review_title">Free up space</string>
+    <string name="local_delete_review_subhead">%1$d items, %2$s</string>
+    <string name="local_delete_confirm">Delete selected</string>
+    <string name="local_delete_cancel">Cancel</string>
+    <string name="local_delete_notif_title">Reclaim space?</string>
+    <string name="local_delete_notif_body">%1$d backed-up items ready to delete locally (≈ %2$s).</string>
+
+    <string name="cost_dashboard_title">Storage &amp; cost</string>
+    <string name="cost_header_total">Total backed up: %1$s items · %2$s</string>
+    <string name="cost_header_cost">Estimated monthly cost: ≈ %1$s</string>
+    <string name="cost_by_media_type">By media type</string>
+    <string name="cost_row_photos">Photos: %1$s · %2$s · %3$s / month</string>
+    <string name="cost_row_videos">Videos: %1$s · %2$s · %3$s / month</string>
+    <string name="cost_pending_header">Pending and failed</string>
+    <string name="cost_pending">Waiting to upload: %1$s · %2$s</string>
+    <string name="cost_failed">Failed (permanent): %1$s</string>
+    <string name="cost_by_year_header">By year</string>
+    <string name="cost_year_row">%1$d: %2$s · %3$s photos, %4$s videos</string>
+    <string name="cost_egress">Thumbnail viewing this month: ≈ %1$s · ≈ %2$s</string>
+    <string name="cost_footnote">B2 pricing as of %1$s. These numbers are estimates.</string>
+
+    <string name="action_share_link">Share link</string>
+    <string name="share_link_title">Share link</string>
+    <string name="share_link_body">Anyone with this link can view the photo until it expires.</string>
+    <string name="share_ttl_1h">1 hour</string>
+    <string name="share_ttl_24h">24 hours</string>
+    <string name="share_ttl_7d">7 days</string>
+    <string name="share_link_cancel">Cancel</string>
+    <string name="share_link_create">Create link</string>
+    <string name="share_link_created">Link copied. Expires in %1$s.</string>
+    <string name="share_link_chooser_title">Share link</string>
+    <string name="share_link_error_not_found">Photo no longer available.</string>
+    <string name="share_link_error_generic">Could not create link. Try again later.</string>
+    <string name="share_link_local_only_warning">This photo is not in the cloud yet.</string>
+    <string name="share_links_active_title">Active share links</string>
+    <string name="share_links_disclaimer">Links cannot be revoked once shared. They expire automatically. Use short durations for sensitive photos.</string>
+    <string name="share_links_empty">No active links.</string>
+    <string name="share_link_copy">Copy</string>
+    <string name="share_link_open">Open</string>
+    <string name="share_link_copied">Copied to clipboard</string>
+
+    <string name="first_backup_enable_title">Back up new photos automatically?</string>
+    <string name="first_backup_enable_body">We\'ll watch your gallery and upload new photos in the background.</string>
+    <string name="first_backup_enable_primary">Enable</string>
+    <string name="first_backup_enable_secondary">Not now</string>
+
+    <string name="first_backup_scope_title">What should we back up?</string>
+    <string name="first_backup_scope_body">Just photos taken from now on, or your entire gallery history?</string>
+    <string name="first_backup_scope_today">From today only</string>
+    <string name="first_backup_scope_all">Entire gallery history</string>
+    <string name="first_backup_scope_continue">Continue</string>
+
+    <string name="first_backup_videos_title">Back up videos too?</string>
+    <string name="first_backup_videos_body">Videos can use much more space than photos. You can change this in settings later.</string>
+    <string name="first_backup_videos_toggle">Include videos</string>
+    <string name="first_backup_videos_finish">Finish</string>
+    <string name="first_backup_videos_permission_denied">Videos disabled — permission denied.</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_backup">Backup</string>
+    <string name="settings_auto_upload">Auto-upload</string>
+    <string name="settings_timing">Backup timing</string>
+    <string name="settings_timing_immediate">Immediate</string>
+    <string name="settings_timing_scheduled">Scheduled (nightly)</string>
+    <string name="settings_timing_hybrid">Hybrid</string>
+    <string name="settings_wifi_only">Wi-Fi only</string>
+
+    <string name="settings_section_videos">Videos</string>
+    <string name="settings_videos_enabled">Include videos</string>
+    <string name="settings_videos_quality">Quality mode</string>
+    <string name="settings_videos_quality_original">Upload originals</string>
+    <string name="settings_videos_quality_compressed">Compress all videos</string>
+    <string name="settings_videos_quality_duration_based">Compress long videos only</string>
+    <string name="settings_videos_threshold">Compress videos longer than</string>
+    <string name="settings_videos_threshold_units">%1$d min</string>
+    <string name="settings_videos_target_resolution">Compressed resolution</string>
+    <string name="settings_videos_permission_denied">Videos disabled — permission denied.</string>
+
+    <string name="settings_section_storage">Storage management</string>
+    <string name="settings_storage_strategy">Auto-delete strategy</string>
+    <string name="settings_storage_strategy_never">Never</string>
+    <string name="settings_storage_strategy_immediate">Immediately after upload</string>
+    <string name="settings_storage_strategy_after_days">After X days</string>
+    <string name="settings_storage_strategy_after_count">After N new photos</string>
+    <string name="settings_storage_days">Days after upload</string>
+    <string name="settings_storage_count">New photos before deletion</string>
+    <string name="settings_storage_review_now">Review pending deletions now</string>
+
+    <string name="settings_section_storage_cost">Storage &amp; cost</string>
+    <string name="settings_section_index">Backup index</string>
+    <string name="settings_index_last">Last backed up: %1$s</string>
+    <string name="settings_index_never">Last backed up: never</string>
+    <string name="settings_index_back_up_now">Back up index now</string>
+    <string name="settings_index_restore">Restore index from cloud</string>
+
+    <string name="settings_section_sharing">Active share links</string>
+    <string name="settings_sharing_active_count">%1$d active</string>
+    <string name="settings_sharing_none">None</string>
+
+    <string name="settings_section_account">Account</string>
+    <string name="settings_account_re_enter">Re-enter credentials</string>
+    <string name="settings_account_sign_out">Sign out</string>
+    <string name="settings_account_sign_out_confirm">Sign out of B2?\nYour SQLite index stays on this device. You can sign back in with the same or different credentials.</string>
+
+    <string name="settings_section_about">About</string>
+    <string name="settings_about_version">App version: %1$s (%2$d)</string>
+    <string name="settings_about_endpoint">B2 endpoint: %1$s</string>
+    <string name="settings_about_repo">Project repository</string>
 </resources>

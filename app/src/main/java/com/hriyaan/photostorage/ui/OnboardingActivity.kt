@@ -91,4 +91,8 @@ class OnboardingActivity : AppCompatActivity() {
         if (e is IOException) return getString(R.string.error_network)
         return getString(R.string.error_generic_format, e.javaClass.simpleName)
     }
+
+    companion object {
+        const val EXTRA_FORCE_RECREDENTIAL = "force_recredential"
+    }
 }

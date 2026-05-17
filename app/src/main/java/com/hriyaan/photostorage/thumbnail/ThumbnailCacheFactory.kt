@@ -16,7 +16,8 @@ import java.io.File
 class ThumbnailCacheFactory(
     private val context: Context,
     private val s3Uploader: S3Uploader,
-    private val prefsStore: PrefsStore
+    private val prefsStore: PrefsStore,
+    private val egressRecorder: ((Long) -> Unit)? = null
 ) {
     private val imageLoader: ImageLoader by lazy { build() }
 
@@ -57,7 +58,7 @@ class ThumbnailCacheFactory(
                     .build()
             }
             .components {
-                add(B2ThumbnailFetcher.Factory(context, s3Uploader))
+                add(B2ThumbnailFetcher.Factory(context, s3Uploader, egressRecorder))
             }
             .build()
     }

@@ -13,6 +13,7 @@ coil = "2.7.0"
 securityCrypto = "1.1.0-alpha06"
 coroutines = "1.8.1"
 workManager = "2.9.0"
+media3 = "1.4.1"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
 
@@ -29,6 +30,9 @@ coil = { module = "io.coil-kt:coil", version.ref = "coil" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
+androidx-media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+androidx-media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
+androidx-media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
 

@@ -18,7 +18,8 @@ import java.security.MessageDigest
 class B2ThumbnailFetcher(
     private val path: String,
     private val context: Context,
-    private val s3Uploader: S3Uploader
+    private val s3Uploader: S3Uploader,
+    private val egressRecorder: ((Long) -> Unit)? = null
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult {
@@ -29,6 +30,7 @@ class B2ThumbnailFetcher(
             val tmp = File(cacheDir, "${cacheKey(path)}.tmp")
             try {
                 s3Uploader.downloadObject(path, tmp).getOrThrow()
+                egressRecorder?.invoke(tmp.length())
                 if (!tmp.renameTo(cacheFile)) {
                     tmp.delete()
                     throw java.io.IOException("Could not finalize thumbnail cache entry for $path")
@@ -55,12 +57,13 @@ class B2ThumbnailFetcher(
 
     class Factory(
         private val context: Context,
-        private val s3Uploader: S3Uploader
+        private val s3Uploader: S3Uploader,
+        private val egressRecorder: ((Long) -> Unit)? = null
     ) : Fetcher.Factory<ThumbnailSource.B2Path> {
         override fun create(
             data: ThumbnailSource.B2Path,
             options: Options,
             imageLoader: ImageLoader
-        ): Fetcher = B2ThumbnailFetcher(data.path, context, s3Uploader)
+        ): Fetcher = B2ThumbnailFetcher(data.path, context, s3Uploader, egressRecorder)
     }
 }

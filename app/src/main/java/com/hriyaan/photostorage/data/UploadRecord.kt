@@ -15,5 +15,9 @@ data class UploadRecord(
     val sha256: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val localPresent: Boolean = true,
-    val cloudDeletedAt: Long? = null
+    val cloudDeletedAt: Long? = null,
+    val mediaType: String = "photo",
+    val originalPathB2: String? = null,
+    val pendingLocalDelete: Boolean = false,
+    val compressed: Boolean = false
 )

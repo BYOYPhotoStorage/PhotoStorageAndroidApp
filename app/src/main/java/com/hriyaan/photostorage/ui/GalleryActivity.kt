@@ -115,11 +115,21 @@ class GalleryActivity : AppCompatActivity() {
 
         override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
             mode.title = getString(R.string.selection_title, selection.size)
+            val shareItem = menu.findItem(R.id.action_share_link)
+            if (shareItem != null) {
+                val canShare = selection.size == 1 &&
+                    adapter.findById(selection.first()) !is GalleryItem.LocalOnly
+                shareItem.isEnabled = canShare
+            }
             return true
         }
 
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
             return when (item.itemId) {
+                R.id.action_share_link -> {
+                    onShareLinkClicked()
+                    true
+                }
                 R.id.action_delete -> {
                     onDeleteSelected()
                     true
@@ -243,6 +253,10 @@ class GalleryActivity : AppCompatActivity() {
                     Intent(this, IndexRecoveryActivity::class.java)
                         .putExtra(IndexRecoveryActivity.EXTRA_FORCE_RESTORE_PROMPT, true)
                 )
+                true
+            }
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
             R.id.action_about -> {
@@ -411,6 +425,17 @@ class GalleryActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    private fun onShareLinkClicked() {
+        if (selection.size != 1) return
+        val item = adapter.findById(selection.first()) ?: return
+        if (item is GalleryItem.LocalOnly) {
+            Toast.makeText(this, R.string.share_link_local_only_warning, Toast.LENGTH_SHORT).show()
+            return
+        }
+        ShareLinkDialog.newInstance(item.id).show(supportFragmentManager, "share_link")
+        actionMode?.finish()
     }
 
     private fun uploadLocalNow(item: GalleryItem.LocalOnly) {

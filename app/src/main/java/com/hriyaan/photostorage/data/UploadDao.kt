@@ -4,13 +4,17 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteOpenHelper
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CLOUD_DELETED_AT
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_COMPRESSED
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CREATED_AT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_DATE_TAKEN
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_FILENAME
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_ID
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_LOCAL_PRESENT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_LOCAL_URI
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_MEDIA_TYPE
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_NEXT_RETRY_AT
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_ORIGINAL_PATH_B2
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_PENDING_LOCAL_DELETE
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_PHOTO_B2_PATH
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_RETRY_COUNT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_SHA256
@@ -29,6 +33,9 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         const val STATUS_FAILED = "failed"
         const val STATUS_PERMANENTLY_FAILED = "permanently_failed"
         const val STATUS_CLOUD_DELETED = "cloud_deleted"
+
+        const val MEDIA_TYPE_PHOTO = "photo"
+        const val MEDIA_TYPE_VIDEO = "video"
 
         private const val MAX_RETRIES = 5
     }
@@ -49,6 +56,10 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
             put(COL_CREATED_AT, record.createdAt)
             put(COL_LOCAL_PRESENT, if (record.localPresent) 1 else 0)
             record.cloudDeletedAt?.let { put(COL_CLOUD_DELETED_AT, it) }
+            put(COL_MEDIA_TYPE, record.mediaType)
+            record.originalPathB2?.let { put(COL_ORIGINAL_PATH_B2, it) }
+            put(COL_PENDING_LOCAL_DELETE, if (record.pendingLocalDelete) 1 else 0)
+            put(COL_COMPRESSED, if (record.compressed) 1 else 0)
         }
         return helper.writableDatabase.insertOrThrow(TABLE_UPLOADS, null, values)
     }
@@ -77,6 +88,31 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
             put(COL_THUMBNAIL_B2_PATH, thumbnailPath)
             put(COL_UPLOADED_AT, uploadedAt)
             put(COL_STATUS, STATUS_UPLOADED)
+        }
+        return helper.writableDatabase.update(
+            TABLE_UPLOADS,
+            values,
+            "$COL_ID = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun setUploadedVideoPaths(
+        id: Long,
+        videoPath: String,
+        thumbnailPath: String,
+        uploadedAt: Long,
+        compressed: Boolean,
+        originalPathB2: String? = null
+    ): Int {
+        val values = ContentValues().apply {
+            put(COL_PHOTO_B2_PATH, videoPath)
+            put(COL_THUMBNAIL_B2_PATH, thumbnailPath)
+            put(COL_UPLOADED_AT, uploadedAt)
+            put(COL_STATUS, STATUS_UPLOADED)
+            put(COL_COMPRESSED, if (compressed) 1 else 0)
+            if (originalPathB2 != null) put(COL_ORIGINAL_PATH_B2, originalPathB2)
+            else putNull(COL_ORIGINAL_PATH_B2)
         }
         return helper.writableDatabase.update(
             TABLE_UPLOADS,
@@ -302,12 +338,142 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
                     put(COL_CREATED_AT, record.createdAt)
                     put(COL_LOCAL_PRESENT, if (record.localPresent) 1 else 0)
                     record.cloudDeletedAt?.let { put(COL_CLOUD_DELETED_AT, it) }
+                    put(COL_MEDIA_TYPE, record.mediaType)
+                    record.originalPathB2?.let { put(COL_ORIGINAL_PATH_B2, it) }
+                    put(COL_PENDING_LOCAL_DELETE, if (record.pendingLocalDelete) 1 else 0)
+                    put(COL_COMPRESSED, if (record.compressed) 1 else 0)
                 }
                 db.insertOrThrow(TABLE_UPLOADS, null, values)
             }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
+        }
+    }
+
+    fun getByMediaType(mediaType: String): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_MEDIA_TYPE = ?",
+            arrayOf(mediaType),
+            null,
+            null,
+            "$COL_DATE_TAKEN DESC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun countByMediaType(mediaType: String): Int {
+        helper.readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_UPLOADS WHERE $COL_MEDIA_TYPE = ? AND $COL_STATUS = ?",
+            arrayOf(mediaType, STATUS_UPLOADED)
+        ).use { c ->
+            return if (c.moveToFirst()) c.getInt(0) else 0
+        }
+    }
+
+    fun sumSizeByMediaType(mediaType: String): Long {
+        helper.readableDatabase.rawQuery(
+            "SELECT COALESCE(SUM($COL_SIZE), 0) FROM $TABLE_UPLOADS WHERE $COL_MEDIA_TYPE = ? AND $COL_STATUS = ?",
+            arrayOf(mediaType, STATUS_UPLOADED)
+        ).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0L
+        }
+    }
+
+    fun markPendingLocalDelete(ids: List<Long>): Int {
+        if (ids.isEmpty()) return 0
+        val db = helper.writableDatabase
+        var affected = 0
+        db.beginTransaction()
+        try {
+            ids.chunked(500).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                val sql = "UPDATE $TABLE_UPLOADS SET $COL_PENDING_LOCAL_DELETE = 1 " +
+                    "WHERE $COL_ID IN ($placeholders)"
+                db.compileStatement(sql).use { stmt ->
+                    chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                    affected += stmt.executeUpdateDelete()
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return affected
+    }
+
+    fun getPendingLocalDelete(): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_PENDING_LOCAL_DELETE = 1 AND $COL_STATUS = ?",
+            arrayOf(STATUS_UPLOADED),
+            null,
+            null,
+            "$COL_DATE_TAKEN DESC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun getEligibleForLocalDelete(olderThanUploadedAt: Long): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_STATUS = ? AND $COL_UPLOADED_AT <= ? AND $COL_PENDING_LOCAL_DELETE = 0 AND $COL_LOCAL_PRESENT = 1",
+            arrayOf(STATUS_UPLOADED, olderThanUploadedAt.toString()),
+            null,
+            null,
+            "$COL_UPLOADED_AT ASC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun getOldestUploaded(limit: Int): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_STATUS = ? AND $COL_LOCAL_PRESENT = 1 AND $COL_PENDING_LOCAL_DELETE = 0",
+            arrayOf(STATUS_UPLOADED),
+            null,
+            null,
+            "$COL_UPLOADED_AT ASC",
+            limit.toString()
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun clearPendingLocalDelete(id: Long): Int {
+        val values = ContentValues().apply {
+            put(COL_PENDING_LOCAL_DELETE, 0)
+        }
+        return helper.writableDatabase.update(
+            TABLE_UPLOADS,
+            values,
+            "$COL_ID = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun countUploadsSince(timestamp: Long): Int {
+        helper.readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_UPLOADS WHERE $COL_UPLOADED_AT > ?",
+            arrayOf(timestamp.toString())
+        ).use { c ->
+            return if (c.moveToFirst()) c.getInt(0) else 0
         }
     }
 
@@ -326,7 +492,11 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         sha256 = getStringOrNull(COL_SHA256),
         createdAt = getLong(getColumnIndexOrThrow(COL_CREATED_AT)),
         localPresent = getInt(getColumnIndexOrThrow(COL_LOCAL_PRESENT)) == 1,
-        cloudDeletedAt = getLongOrNull(COL_CLOUD_DELETED_AT)
+        cloudDeletedAt = getLongOrNull(COL_CLOUD_DELETED_AT),
+        mediaType = getString(getColumnIndexOrThrow(COL_MEDIA_TYPE)),
+        originalPathB2 = getStringOrNull(COL_ORIGINAL_PATH_B2),
+        pendingLocalDelete = getInt(getColumnIndexOrThrow(COL_PENDING_LOCAL_DELETE)) == 1,
+        compressed = getInt(getColumnIndexOrThrow(COL_COMPRESSED)) == 1
     )
 
     private fun Cursor.getStringOrNull(column: String): String? {

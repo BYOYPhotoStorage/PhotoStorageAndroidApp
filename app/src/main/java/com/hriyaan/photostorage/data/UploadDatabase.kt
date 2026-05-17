@@ -10,6 +10,8 @@ class UploadDatabase(context: Context) {
 
     val dao: UploadDao by lazy { UploadDao(helper) }
 
+    val shareLinkDao: ShareLinkDao by lazy { ShareLinkDao(helper) }
+
     val writableDatabase: SQLiteDatabase
         get() = helper.writableDatabase
 
@@ -37,7 +39,11 @@ class UploadDatabase(context: Context) {
                     $COL_SHA256 TEXT,
                     $COL_CREATED_AT INTEGER NOT NULL DEFAULT 0,
                     $COL_LOCAL_PRESENT INTEGER NOT NULL DEFAULT 1,
-                    $COL_CLOUD_DELETED_AT INTEGER
+                    $COL_CLOUD_DELETED_AT INTEGER,
+                    $COL_MEDIA_TYPE TEXT NOT NULL DEFAULT '${UploadDao.MEDIA_TYPE_PHOTO}',
+                    $COL_ORIGINAL_PATH_B2 TEXT,
+                    $COL_PENDING_LOCAL_DELETE INTEGER NOT NULL DEFAULT 0,
+                    $COL_COMPRESSED INTEGER NOT NULL DEFAULT 0
                 )
                 """.trimIndent()
             )
@@ -46,6 +52,23 @@ class UploadDatabase(context: Context) {
             db.execSQL("CREATE INDEX idx_sha256 ON $TABLE_UPLOADS($COL_SHA256)")
             db.execSQL("CREATE INDEX idx_cloud_deleted_at ON $TABLE_UPLOADS($COL_CLOUD_DELETED_AT)")
             db.execSQL("CREATE INDEX idx_date_taken ON $TABLE_UPLOADS($COL_DATE_TAKEN)")
+            db.execSQL("CREATE INDEX idx_media_type ON $TABLE_UPLOADS($COL_MEDIA_TYPE)")
+            db.execSQL("CREATE INDEX idx_pending_local_delete ON $TABLE_UPLOADS($COL_PENDING_LOCAL_DELETE)")
+
+            db.execSQL(
+                """
+                CREATE TABLE $TABLE_SHARE_LINKS (
+                    $COL_SHARE_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    $COL_SHARE_UPLOAD_ID INTEGER NOT NULL,
+                    $COL_SHARE_PHOTO_B2_PATH TEXT NOT NULL,
+                    $COL_SHARE_URL TEXT NOT NULL,
+                    $COL_SHARE_CREATED_AT INTEGER NOT NULL,
+                    $COL_SHARE_EXPIRES_AT INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX idx_share_links_expires_at ON $TABLE_SHARE_LINKS($COL_SHARE_EXPIRES_AT)")
+            db.execSQL("CREATE INDEX idx_share_links_upload_id ON $TABLE_SHARE_LINKS($COL_SHARE_UPLOAD_ID)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -56,7 +79,7 @@ class UploadDatabase(context: Context) {
 
     internal companion object {
         const val DB_NAME = "uploads.db"
-        const val DB_VERSION = 3
+        const val DB_VERSION = 4
 
         const val TABLE_UPLOADS = "uploads"
         const val COL_ID = "id"
@@ -74,5 +97,17 @@ class UploadDatabase(context: Context) {
         const val COL_CREATED_AT = "created_at"
         const val COL_LOCAL_PRESENT = "local_present"
         const val COL_CLOUD_DELETED_AT = "cloud_deleted_at"
+        const val COL_MEDIA_TYPE = "media_type"
+        const val COL_ORIGINAL_PATH_B2 = "original_path_b2"
+        const val COL_PENDING_LOCAL_DELETE = "pending_local_delete"
+        const val COL_COMPRESSED = "compressed"
+
+        const val TABLE_SHARE_LINKS = "share_links"
+        const val COL_SHARE_ID = "id"
+        const val COL_SHARE_UPLOAD_ID = "upload_id"
+        const val COL_SHARE_PHOTO_B2_PATH = "photo_b2_path"
+        const val COL_SHARE_URL = "url"
+        const val COL_SHARE_CREATED_AT = "created_at"
+        const val COL_SHARE_EXPIRES_AT = "expires_at"
     }
 }
