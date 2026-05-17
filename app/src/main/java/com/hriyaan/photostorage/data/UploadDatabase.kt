@@ -28,22 +28,28 @@ class UploadDatabase(context: Context) {
                     $COL_PHOTO_B2_PATH TEXT,
                     $COL_THUMBNAIL_B2_PATH TEXT,
                     $COL_STATUS TEXT NOT NULL DEFAULT '${UploadDao.STATUS_PENDING}',
-                    $COL_UPLOADED_AT INTEGER
+                    $COL_UPLOADED_AT INTEGER,
+                    $COL_RETRY_COUNT INTEGER NOT NULL DEFAULT 0,
+                    $COL_NEXT_RETRY_AT INTEGER,
+                    $COL_SHA256 TEXT,
+                    $COL_CREATED_AT INTEGER NOT NULL DEFAULT 0
                 )
                 """.trimIndent()
             )
             db.execSQL("CREATE INDEX idx_status ON $TABLE_UPLOADS($COL_STATUS)")
             db.execSQL("CREATE INDEX idx_filename_size ON $TABLE_UPLOADS($COL_FILENAME, $COL_SIZE)")
+            db.execSQL("CREATE INDEX idx_sha256 ON $TABLE_UPLOADS($COL_SHA256)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            // MVP: schema version 1 only. Future migrations land here.
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_UPLOADS")
+            onCreate(db)
         }
     }
 
     internal companion object {
         const val DB_NAME = "uploads.db"
-        const val DB_VERSION = 1
+        const val DB_VERSION = 2
 
         const val TABLE_UPLOADS = "uploads"
         const val COL_ID = "id"
@@ -55,5 +61,9 @@ class UploadDatabase(context: Context) {
         const val COL_THUMBNAIL_B2_PATH = "thumbnail_b2_path"
         const val COL_STATUS = "status"
         const val COL_UPLOADED_AT = "uploaded_at"
+        const val COL_RETRY_COUNT = "retry_count"
+        const val COL_NEXT_RETRY_AT = "next_retry_at"
+        const val COL_SHA256 = "sha256"
+        const val COL_CREATED_AT = "created_at"
     }
 }

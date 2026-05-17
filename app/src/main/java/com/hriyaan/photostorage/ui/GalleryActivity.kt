@@ -1,10 +1,14 @@
 package com.hriyaan.photostorage.ui
 
+import android.Manifest
 import android.app.AlertDialog
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import aws.smithy.kotlin.runtime.content.ByteStream
@@ -19,8 +23,13 @@ import com.hriyaan.photostorage.data.PhotoPermission
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.databinding.ActivityGalleryBinding
+import com.hriyaan.photostorage.service.UploadForegroundService
 import com.hriyaan.photostorage.thumbnail.ThumbnailGen
+import com.hriyaan.photostorage.worker.NightlyScanScheduler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -40,6 +49,7 @@ class GalleryActivity : AppCompatActivity() {
 
     private var s3Uploader: S3Uploader? = null
     private val inFlight = mutableSetOf<String>()
+    private var statusRefreshJob: Job? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -51,6 +61,10 @@ class GalleryActivity : AppCompatActivity() {
             finish()
         }
     }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* best-effort; if denied, the OS silently suppresses notifications */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,10 +87,60 @@ class GalleryActivity : AppCompatActivity() {
             creds.bucketName
         )
 
+        binding.autoUploadSwitch.isChecked = prefsStore.isAutoUploadEnabled()
+        binding.wifiOnlySwitch.isChecked = prefsStore.isWifiOnly()
+        binding.autoUploadSwitch.setOnCheckedChangeListener { _, isChecked ->
+            prefsStore.setAutoUploadEnabled(isChecked)
+            if (isChecked) {
+                UploadForegroundService.start(this)
+                NightlyScanScheduler.schedule(this)
+            } else {
+                UploadForegroundService.stop(this)
+                NightlyScanScheduler.cancel(this)
+            }
+            updateStatusText()
+        }
+        binding.wifiOnlySwitch.setOnCheckedChangeListener { _, isChecked ->
+            prefsStore.setWifiOnly(isChecked)
+            updateStatusText()
+        }
+        if (binding.autoUploadSwitch.isChecked) {
+            UploadForegroundService.start(this)
+        }
+        updateStatusText()
+
+        maybeRequestNotificationPermission()
+
         if (PhotoPermission.isGranted(this)) {
             loadGallery()
         } else {
             permissionLauncher.launch(PhotoPermission.PERMISSION)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        statusRefreshJob = lifecycleScope.launch {
+            while (isActive) {
+                updateStatusText()
+                delay(STATUS_REFRESH_INTERVAL_MS)
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        statusRefreshJob?.cancel()
+        statusRefreshJob = null
+    }
+
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -99,6 +163,30 @@ class GalleryActivity : AppCompatActivity() {
             }
             val current = adapter.findByPhotoId(photoId) ?: return@launch
             adapter.updateItem(photoId, current.copy(record = updated))
+        }
+    }
+
+    private fun updateStatusText() {
+        lifecycleScope.launch {
+            val (pending, retrying, permanentlyFailed) = withContext(Dispatchers.IO) {
+                Triple(
+                    uploadDao.getPendingQueue().size,
+                    uploadDao.getFailedRetryable().size,
+                    uploadDao.getAll().count { it.status == UploadDao.STATUS_PERMANENTLY_FAILED }
+                )
+            }
+            val parts = mutableListOf<String>()
+            if (pending > 0) parts += getString(R.string.status_pending, pending)
+            if (retrying > 0) parts += getString(R.string.status_retrying, retrying)
+            if (permanentlyFailed > 0) parts += getString(R.string.status_failed, permanentlyFailed)
+            if (parts.isEmpty()) parts += getString(R.string.status_caught_up)
+            if (prefsStore.isAutoUploadEnabled() && prefsStore.isWifiOnly()) {
+                parts += getString(R.string.status_wifi_only)
+            }
+            if (!prefsStore.isAutoUploadEnabled()) {
+                parts += getString(R.string.status_manual)
+            }
+            binding.statusText.text = parts.joinToString(" ")
         }
     }
 
@@ -198,18 +286,48 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private fun onLongPress(item: GalleryItem) {
+        val record = item.record
+        if (record?.status == UploadDao.STATUS_PERMANENTLY_FAILED) {
+            showRetryDialog(item, record)
+        } else {
+            showInfoDialog(item)
+        }
+    }
+
+    private fun showInfoDialog(item: GalleryItem) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.info_title)
+            .setMessage(buildInfoMessage(item))
+            .setPositiveButton(R.string.ok, null)
+            .show()
+    }
+
+    private fun showRetryDialog(item: GalleryItem, record: UploadRecord) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.info_title)
+            .setMessage(buildInfoMessage(item))
+            .setPositiveButton(R.string.retry) { _, _ ->
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        uploadDao.updateRetry(record.id, 0, null)
+                        uploadDao.updateStatus(record.id, UploadDao.STATUS_PENDING)
+                    }
+                    UploadForegroundService.start(this@GalleryActivity)
+                    refreshItem(item.photo.id, item.photo.filename, item.photo.size)
+                    updateStatusText()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun buildInfoMessage(item: GalleryItem): String {
         val df = DateFormat.getDateTimeInstance()
         val dateStr = if (item.photo.dateTakenMs > 0) df.format(Date(item.photo.dateTakenMs)) else "—"
         val sizeStr = formatSize(item.photo.size)
-        AlertDialog.Builder(this)
-            .setTitle(R.string.info_title)
-            .setMessage(
-                getString(R.string.info_filename, item.photo.filename) + "\n" +
-                        getString(R.string.info_size, sizeStr) + "\n" +
-                        getString(R.string.info_date, dateStr)
-            )
-            .setPositiveButton(R.string.ok, null)
-            .show()
+        return getString(R.string.info_filename, item.photo.filename) + "\n" +
+                getString(R.string.info_size, sizeStr) + "\n" +
+                getString(R.string.info_date, dateStr)
     }
 
     private fun formatSize(bytes: Long): String {
@@ -225,5 +343,9 @@ class GalleryActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         s3Uploader?.close()
+    }
+
+    companion object {
+        private const val STATUS_REFRESH_INTERVAL_MS = 5000L
     }
 }

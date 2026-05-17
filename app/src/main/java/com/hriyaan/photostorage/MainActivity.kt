@@ -11,12 +11,14 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as PhotoBackupApp
-        val target = if (app.prefsStore.hasCredentials()) {
-            GalleryActivity::class.java
-        } else {
-            OnboardingActivity::class.java
+
+        if (!app.prefsStore.hasCredentials()) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
         }
-        startActivity(Intent(this, target))
+
+        startActivity(Intent(this, GalleryActivity::class.java))
         finish()
     }
 }

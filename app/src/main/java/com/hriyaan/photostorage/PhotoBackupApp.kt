@@ -3,6 +3,7 @@ package com.hriyaan.photostorage
 import android.app.Application
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.data.UploadDatabase
+import com.hriyaan.photostorage.notification.UploadNotificationManager
 
 class PhotoBackupApp : Application() {
 
@@ -16,5 +17,6 @@ class PhotoBackupApp : Application() {
         super.onCreate()
         prefsStore = PrefsStore(this)
         uploadDatabase = UploadDatabase(this)
+        UploadNotificationManager(this).ensureChannels()
     }
 }

@@ -24,4 +24,15 @@
     <string name="info_size">Size: %1$s</string>
     <string name="info_date">Date: %1$s</string>
     <string name="ok">OK</string>
+
+    <string name="switch_auto">Auto</string>
+    <string name="switch_wifi">Wi-Fi</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="status_pending">%1$d pending</string>
+    <string name="status_retrying">%1$d retrying</string>
+    <string name="status_failed">%1$d failed</string>
+    <string name="status_caught_up">All caught up</string>
+    <string name="status_wifi_only">· Wi-Fi only</string>
+    <string name="status_manual">· Manual mode</string>
 </resources>
