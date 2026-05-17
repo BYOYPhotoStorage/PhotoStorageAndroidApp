@@ -38,7 +38,7 @@ class UploadForegroundService : Service() {
     private lateinit var prefsStore: PrefsStore
     private lateinit var notificationManager: UploadNotificationManager
     private lateinit var duplicateDetector: DuplicateDetector
-    private lateinit var uploadWorker: UploadWorker
+    private var uploadWorker: UploadWorker? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
@@ -68,19 +68,17 @@ class UploadForegroundService : Service() {
         duplicateDetector = DuplicateDetector(uploadDao)
 
         val creds = prefsStore.getCredentials()
-        uploadWorker = if (creds != null) {
+        if (creds != null) {
             val config = S3Config.forBucket(creds.bucketName)
             val client = S3ClientFactory.create(creds, config)
             val s3Uploader = S3Uploader(client, creds.bucketName)
-            UploadWorker(
+            uploadWorker = UploadWorker(
                 this,
                 uploadDao,
                 s3Uploader,
                 ThumbnailGen(this),
                 notificationManager
             )
-        } else {
-            UploadWorker(this, uploadDao, null, ThumbnailGen(this), notificationManager)
         }
 
         notificationManager.ensureChannels()
@@ -195,12 +193,13 @@ class UploadForegroundService : Service() {
     }
 
     private fun triggerWorker() {
-        scope.launch {
+        val worker = uploadWorker ?: return
+        scope.launch(Dispatchers.IO) {
             processLock.withLock {
                 if (isProcessing) return@withLock
                 isProcessing = true
                 try {
-                    uploadWorker.processQueue()
+                    worker.processQueue()
                 } finally {
                     isProcessing = false
                 }
