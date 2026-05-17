@@ -25,8 +25,10 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
         val mediaStoreQuery = MediaStoreQuery(applicationContext)
         val duplicateDetector = DuplicateDetector(applicationContext, uploadDao)
 
-        val lastScan = prefsStore.getLastScanTimestamp()
-        val photos = mediaStoreQuery.queryAllPhotos()
+        val sinceFromInput = inputData.getLong(KEY_SINCE, -1L).takeIf { it >= 0L }
+        val since = sinceFromInput ?: prefsStore.getLastScanTimestamp()
+        val allPhotos = mediaStoreQuery.queryAllPhotos()
+        val photos = if (since > 0L) allPhotos.filter { it.dateTakenMs >= since } else allPhotos
 
         var enqueuedCount = 0
         for (photo in photos) {
@@ -73,5 +75,9 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
         }
 
         return Result.success()
+    }
+
+    companion object {
+        const val KEY_SINCE = "since"
     }
 }

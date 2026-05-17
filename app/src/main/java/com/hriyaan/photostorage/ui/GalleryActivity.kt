@@ -1,15 +1,25 @@
 package com.hriyaan.photostorage.ui
 
 import android.Manifest
+import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.text.format.DateUtils
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.ActionMode
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import aws.smithy.kotlin.runtime.content.ByteStream
 import com.hriyaan.photostorage.PhotoBackupApp
@@ -18,14 +28,21 @@ import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
-import com.hriyaan.photostorage.data.MediaStoreQuery
 import com.hriyaan.photostorage.data.PhotoPermission
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.databinding.ActivityGalleryBinding
+import com.hriyaan.photostorage.gallery.DeletionEngine
+import com.hriyaan.photostorage.gallery.GalleryItem
+import com.hriyaan.photostorage.gallery.GalleryViewMode
+import com.hriyaan.photostorage.gallery.MediaStoreDeleteLauncher
+import com.hriyaan.photostorage.recovery.IndexRecoveryActivity
 import com.hriyaan.photostorage.service.UploadForegroundService
+import com.hriyaan.photostorage.thumbnail.ThumbnailCacheFactory
 import com.hriyaan.photostorage.thumbnail.ThumbnailGen
+import com.hriyaan.photostorage.worker.IndexSyncScheduler
 import com.hriyaan.photostorage.worker.NightlyScanScheduler
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,29 +50,53 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.text.DateFormat
-import java.util.Date
-import java.util.Locale
 
 class GalleryActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityGalleryBinding
     private lateinit var adapter: GalleryAdapter
 
-    private val mediaStoreQuery by lazy { MediaStoreQuery(applicationContext) }
-    private val uploadDao by lazy { (application as PhotoBackupApp).uploadDatabase.dao }
-    private val prefsStore by lazy { (application as PhotoBackupApp).prefsStore }
+    private val uploadDao by lazy { app.uploadDatabase.dao }
+    private val prefsStore by lazy { app.prefsStore }
+    private val galleryRepository by lazy { app.galleryRepository }
     private val thumbnailGen by lazy { ThumbnailGen(applicationContext) }
+    private val app: PhotoBackupApp get() = application as PhotoBackupApp
 
     private var s3Uploader: S3Uploader? = null
-    private val inFlight = mutableSetOf<String>()
+    private var deletionEngine: DeletionEngine? = null
+    private var thumbnailCacheFactory: ThumbnailCacheFactory? = null
+
+    private var currentMode: GalleryViewMode = GalleryViewMode.MERGED
+    private var galleryJob: Job? = null
     private var statusRefreshJob: Job? = null
+
+    private val inFlight = mutableSetOf<String>()
+    private val selection = linkedSetOf<String>()
+    private var actionMode: ActionMode? = null
+
+    private var pendingDeleteDeferred: CompletableDeferred<Boolean>? = null
+
+    private val deleteRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        pendingDeleteDeferred?.complete(result.resultCode == Activity.RESULT_OK)
+        pendingDeleteDeferred = null
+    }
+
+    private val mediaStoreDeleteLauncher = MediaStoreDeleteLauncher { uris ->
+        if (uris.isEmpty()) return@MediaStoreDeleteLauncher true
+        val pi = MediaStore.createDeleteRequest(contentResolver, uris)
+        val deferred = CompletableDeferred<Boolean>()
+        pendingDeleteDeferred = deferred
+        deleteRequestLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+        deferred.await()
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            loadGallery()
+            startObservingMode(currentMode)
         } else {
             Toast.makeText(this, R.string.permission_denied, Toast.LENGTH_LONG).show()
             finish()
@@ -64,7 +105,35 @@ class GalleryActivity : AppCompatActivity() {
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* best-effort; if denied, the OS silently suppresses notifications */ }
+    ) { }
+
+    private val actionModeCallback = object : ActionMode.Callback {
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menuInflater.inflate(R.menu.menu_gallery_selection, menu)
+            return true
+        }
+
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            mode.title = getString(R.string.selection_title, selection.size)
+            return true
+        }
+
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            return when (item.itemId) {
+                R.id.action_delete -> {
+                    onDeleteSelected()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) {
+            actionMode = null
+            selection.clear()
+            adapter.setSelection(emptySet())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,19 +142,32 @@ class GalleryActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = getString(R.string.title_gallery)
 
-        adapter = GalleryAdapter(::onTap, ::onLongPress)
-        binding.galleryRecyclerView.layoutManager = GridLayoutManager(this, 3)
-        binding.galleryRecyclerView.adapter = adapter
-
         val creds = prefsStore.getCredentials()
         if (creds == null) {
             finish()
             return
         }
-        s3Uploader = S3Uploader(
+
+        val uploader = S3Uploader(
             S3ClientFactory.create(creds, S3Config.forBucket(creds.bucketName)),
             creds.bucketName
         )
+        s3Uploader = uploader
+
+        val cacheFactory = ThumbnailCacheFactory(applicationContext, uploader, prefsStore)
+        thumbnailCacheFactory = cacheFactory
+
+        deletionEngine = DeletionEngine(
+            applicationContext,
+            uploadDao,
+            uploader,
+            galleryRepository,
+            mediaStoreDeleteLauncher
+        )
+
+        adapter = GalleryAdapter(cacheFactory.get(), ::onTap, ::onLongPress)
+        binding.galleryRecyclerView.layoutManager = GridLayoutManager(this, 3)
+        binding.galleryRecyclerView.adapter = adapter
 
         binding.autoUploadSwitch.isChecked = prefsStore.isAutoUploadEnabled()
         binding.wifiOnlySwitch.isChecked = prefsStore.isWifiOnly()
@@ -109,17 +191,67 @@ class GalleryActivity : AppCompatActivity() {
         }
         updateStatusText()
 
+        currentMode = GalleryViewMode.fromKey(prefsStore.getGalleryViewMode())
+        when (currentMode) {
+            GalleryViewMode.LOCAL -> binding.viewModeGroup.check(R.id.modeLocal)
+            GalleryViewMode.CLOUD -> binding.viewModeGroup.check(R.id.modeCloud)
+            GalleryViewMode.MERGED -> binding.viewModeGroup.check(R.id.modeMerged)
+        }
+        binding.viewModeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val mode = when (checkedId) {
+                R.id.modeLocal -> GalleryViewMode.LOCAL
+                R.id.modeCloud -> GalleryViewMode.CLOUD
+                else -> GalleryViewMode.MERGED
+            }
+            if (mode == currentMode) return@addOnButtonCheckedListener
+            prefsStore.setGalleryViewMode(mode.key)
+            currentMode = mode
+            actionMode?.finish()
+            startObservingMode(mode)
+        }
+
+        renderIndexSyncStatus()
+
         maybeRequestNotificationPermission()
 
         if (PhotoPermission.isGranted(this)) {
-            loadGallery()
+            startObservingMode(currentMode)
         } else {
             permissionLauncher.launch(PhotoPermission.PERMISSION)
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_gallery, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_backup_index -> {
+                IndexSyncScheduler.runNow(this)
+                Toast.makeText(this, R.string.index_backup_started, Toast.LENGTH_SHORT).show()
+                lifecycleScope.launch {
+                    delay(STATUS_REFRESH_INTERVAL_MS)
+                    renderIndexSyncStatus()
+                }
+                true
+            }
+            R.id.action_restore_index -> {
+                startActivity(
+                    Intent(this, IndexRecoveryActivity::class.java)
+                        .putExtra(IndexRecoveryActivity.EXTRA_FORCE_RESTORE_PROMPT, true)
+                )
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        renderIndexSyncStatus()
         statusRefreshJob = lifecycleScope.launch {
             while (isActive) {
                 updateStatusText()
@@ -134,6 +266,22 @@ class GalleryActivity : AppCompatActivity() {
         statusRefreshJob = null
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        s3Uploader?.close()
+    }
+
+    private fun startObservingMode(mode: GalleryViewMode) {
+        galleryJob?.cancel()
+        galleryJob = lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                galleryRepository.observe(mode).collect { items ->
+                    adapter.submitList(items)
+                }
+            }
+        }
+    }
+
     private fun maybeRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -141,28 +289,6 @@ class GalleryActivity : AppCompatActivity() {
             ) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-        }
-    }
-
-    private fun loadGallery() {
-        lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) {
-                val photos = mediaStoreQuery.queryAllPhotos()
-                photos.map { p ->
-                    GalleryItem(p, uploadDao.findByFilenameAndSize(p.filename, p.size))
-                }
-            }
-            adapter.submit(items)
-        }
-    }
-
-    private fun refreshItem(photoId: Long, filename: String, size: Long) {
-        lifecycleScope.launch {
-            val updated = withContext(Dispatchers.IO) {
-                uploadDao.findByFilenameAndSize(filename, size)
-            }
-            val current = adapter.findByPhotoId(photoId) ?: return@launch
-            adapter.updateItem(photoId, current.copy(record = updated))
         }
     }
 
@@ -190,36 +316,104 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
 
-    private fun onTap(item: GalleryItem) {
-        if (item.record?.status == UploadDao.STATUS_UPLOADED) {
-            Toast.makeText(this, R.string.already_uploaded, Toast.LENGTH_SHORT).show()
-            return
+    private fun renderIndexSyncStatus() {
+        val ts = prefsStore.getLastIndexSyncAt()
+        binding.indexSyncStatus.text = if (ts == null) {
+            getString(R.string.index_never_synced)
+        } else {
+            getString(R.string.index_synced_at, DateUtils.getRelativeTimeSpanString(ts))
         }
-        val uriKey = item.photo.uri.toString()
-        if (!inFlight.add(uriKey)) return
+    }
 
-        val uploader = s3Uploader ?: run {
-            inFlight.remove(uriKey)
+    private fun onTap(item: GalleryItem) {
+        if (actionMode != null) {
+            toggleSelection(item)
             return
         }
+        if (item is GalleryItem.LocalOnly && item.queuedRecord == null) {
+            uploadLocalNow(item)
+        }
+    }
+
+    private fun onLongPress(item: GalleryItem) {
+        if (actionMode == null) {
+            actionMode = startSupportActionMode(actionModeCallback)
+        }
+        toggleSelection(item)
+    }
+
+    private fun toggleSelection(item: GalleryItem) {
+        if (!selection.add(item.id)) selection.remove(item.id)
+        adapter.setSelection(selection)
+        if (selection.isEmpty()) {
+            actionMode?.finish()
+        } else {
+            actionMode?.invalidate()
+        }
+    }
+
+    private fun onDeleteSelected() {
+        val engine = deletionEngine ?: return
+        val items = selection.mapNotNull { id -> adapter.findById(id) }
+        if (items.isEmpty()) {
+            actionMode?.finish()
+            return
+        }
+        val mode = currentMode
+        val title = when (mode) {
+            GalleryViewMode.LOCAL -> getString(R.string.delete_local_title)
+            GalleryViewMode.CLOUD -> getString(R.string.delete_cloud_title)
+            GalleryViewMode.MERGED -> getString(R.string.delete_merged_title)
+        }
+        val body = when (mode) {
+            GalleryViewMode.LOCAL -> getString(R.string.delete_local_body)
+            GalleryViewMode.CLOUD -> getString(R.string.delete_cloud_body)
+            GalleryViewMode.MERGED -> getString(R.string.delete_merged_body)
+        }
+        val positive = if (mode == GalleryViewMode.MERGED) {
+            getString(R.string.delete_both_button)
+        } else {
+            getString(R.string.delete_button)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(body)
+            .setPositiveButton(positive) { _, _ ->
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        engine.deleteBatch(items, mode)
+                    }
+                    val summary = result.summary.ifEmpty {
+                        getString(R.string.status_caught_up)
+                    }
+                    Toast.makeText(this@GalleryActivity, summary, Toast.LENGTH_LONG).show()
+                    actionMode?.finish()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun uploadLocalNow(item: GalleryItem.LocalOnly) {
+        val uploader = s3Uploader ?: return
+        val uriKey = item.mediaStoreUri.toString()
+        if (!inFlight.add(uriKey)) return
 
         lifecycleScope.launch {
             try {
                 val rowId = withContext(Dispatchers.IO) {
-                    val existing = uploadDao.findByFilenameAndSize(
-                        item.photo.filename,
-                        item.photo.size
-                    )
+                    val existing = uploadDao.findByFilenameAndSize(item.filename, item.sizeBytes)
                     if (existing != null) {
                         uploadDao.updateStatus(existing.id, UploadDao.STATUS_UPLOADING)
                         existing.id
                     } else {
                         uploadDao.insert(
                             UploadRecord(
-                                localUri = item.photo.uri.toString(),
-                                filename = item.photo.filename,
-                                size = item.photo.size,
-                                dateTaken = item.photo.dateTakenMs,
+                                localUri = uriKey,
+                                filename = item.filename,
+                                size = item.sizeBytes,
+                                dateTaken = item.dateTaken,
                                 photoB2Path = null,
                                 thumbnailB2Path = null,
                                 status = UploadDao.STATUS_UPLOADING,
@@ -228,22 +422,16 @@ class GalleryActivity : AppCompatActivity() {
                         )
                     }
                 }
-                refreshItem(item.photo.id, item.photo.filename, item.photo.size)
+                galleryRepository.invalidate()
 
                 val outcome = runCatching {
                     withContext(Dispatchers.IO) {
-                        val photoKey = S3KeyBuilder.photoKey(
-                            item.photo.filename,
-                            item.photo.dateTakenMs
-                        )
-                        val thumbKey = S3KeyBuilder.thumbnailKey(
-                            item.photo.filename,
-                            item.photo.dateTakenMs
-                        )
+                        val photoKey = S3KeyBuilder.photoKey(item.filename, item.dateTaken)
+                        val thumbKey = S3KeyBuilder.thumbnailKey(item.filename, item.dateTaken)
 
-                        val bytes = contentResolver.openInputStream(item.photo.uri)?.use {
+                        val bytes = contentResolver.openInputStream(item.mediaStoreUri)?.use {
                             it.readBytes()
-                        } ?: throw IOException("Could not open ${item.photo.uri}")
+                        } ?: throw IOException("Could not open ${item.mediaStoreUri}")
 
                         uploader.upload(
                             key = photoKey,
@@ -252,7 +440,7 @@ class GalleryActivity : AppCompatActivity() {
                             body = ByteStream.fromBytes(bytes)
                         ).getOrThrow()
 
-                        val thumbBytes = thumbnailGen.createWebPThumbnail(item.photo.uri)
+                        val thumbBytes = thumbnailGen.createWebPThumbnail(item.mediaStoreUri)
                         uploader.upload(
                             key = thumbKey,
                             contentType = "image/webp",
@@ -278,71 +466,11 @@ class GalleryActivity : AppCompatActivity() {
                         Toast.LENGTH_SHORT
                     ).show()
                 }
-                refreshItem(item.photo.id, item.photo.filename, item.photo.size)
+                galleryRepository.invalidate()
             } finally {
                 inFlight.remove(uriKey)
             }
         }
-    }
-
-    private fun onLongPress(item: GalleryItem) {
-        val record = item.record
-        if (record?.status == UploadDao.STATUS_PERMANENTLY_FAILED) {
-            showRetryDialog(item, record)
-        } else {
-            showInfoDialog(item)
-        }
-    }
-
-    private fun showInfoDialog(item: GalleryItem) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.info_title)
-            .setMessage(buildInfoMessage(item))
-            .setPositiveButton(R.string.ok, null)
-            .show()
-    }
-
-    private fun showRetryDialog(item: GalleryItem, record: UploadRecord) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.info_title)
-            .setMessage(buildInfoMessage(item))
-            .setPositiveButton(R.string.retry) { _, _ ->
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        uploadDao.updateRetry(record.id, 0, null)
-                        uploadDao.updateStatus(record.id, UploadDao.STATUS_PENDING)
-                    }
-                    UploadForegroundService.start(this@GalleryActivity)
-                    refreshItem(item.photo.id, item.photo.filename, item.photo.size)
-                    updateStatusText()
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun buildInfoMessage(item: GalleryItem): String {
-        val df = DateFormat.getDateTimeInstance()
-        val dateStr = if (item.photo.dateTakenMs > 0) df.format(Date(item.photo.dateTakenMs)) else "—"
-        val sizeStr = formatSize(item.photo.size)
-        return getString(R.string.info_filename, item.photo.filename) + "\n" +
-                getString(R.string.info_size, sizeStr) + "\n" +
-                getString(R.string.info_date, dateStr)
-    }
-
-    private fun formatSize(bytes: Long): String {
-        val kb = bytes / 1024.0
-        val mb = kb / 1024.0
-        return when {
-            mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
-            kb >= 1.0 -> String.format(Locale.US, "%.1f KB", kb)
-            else -> "$bytes B"
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        s3Uploader?.close()
     }
 
     companion object {

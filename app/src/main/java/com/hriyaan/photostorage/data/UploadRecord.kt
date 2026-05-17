@@ -13,5 +13,7 @@ data class UploadRecord(
     val retryCount: Int = 0,
     val nextRetryAt: Long? = null,
     val sha256: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val localPresent: Boolean = true,
+    val cloudDeletedAt: Long? = null
 )

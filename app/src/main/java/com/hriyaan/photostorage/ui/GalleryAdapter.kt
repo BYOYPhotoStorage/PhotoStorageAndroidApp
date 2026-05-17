@@ -3,35 +3,32 @@ package com.hriyaan.photostorage.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
+import coil.ImageLoader
+import coil.request.ImageRequest
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.databinding.ItemGalleryBinding
+import com.hriyaan.photostorage.gallery.GalleryItem
+import com.hriyaan.photostorage.gallery.ThumbnailSource
 
 class GalleryAdapter(
+    private val imageLoader: ImageLoader,
     private val onTap: (GalleryItem) -> Unit,
     private val onLongPress: (GalleryItem) -> Unit
-) : RecyclerView.Adapter<GalleryAdapter.VH>() {
+) : ListAdapter<GalleryItem, GalleryAdapter.VH>(DIFF) {
 
-    private val items = mutableListOf<GalleryItem>()
+    private val selectedIds = mutableSetOf<String>()
 
-    fun submit(newItems: List<GalleryItem>) {
-        items.clear()
-        items.addAll(newItems)
-        notifyDataSetChanged()
+    fun findById(id: String): GalleryItem? = currentList.firstOrNull { it.id == id }
+
+    fun setSelection(ids: Set<String>) {
+        selectedIds.clear()
+        selectedIds.addAll(ids)
+        notifyItemRangeChanged(0, itemCount)
     }
-
-    fun updateItem(photoId: Long, replacement: GalleryItem) {
-        val idx = items.indexOfFirst { it.photo.id == photoId }
-        if (idx >= 0) {
-            items[idx] = replacement
-            notifyItemChanged(idx)
-        }
-    }
-
-    fun findByPhotoId(photoId: Long): GalleryItem? =
-        items.firstOrNull { it.photo.id == photoId }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemGalleryBinding.inflate(
@@ -43,39 +40,57 @@ class GalleryAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.bind(items[position])
+        holder.bind(getItem(position), selectedIds.contains(getItem(position).id))
     }
-
-    override fun getItemCount(): Int = items.size
 
     inner class VH(private val binding: ItemGalleryBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: GalleryItem) {
-            Glide.with(binding.photoImage)
-                .load(item.photo.uri)
-                .centerCrop()
-                .into(binding.photoImage)
-
-            val status = item.record?.status
-            binding.progress.isVisible = status == UploadDao.STATUS_UPLOADING
-            when (status) {
-                UploadDao.STATUS_UPLOADED -> {
-                    binding.statusIcon.setImageResource(R.drawable.ic_cloud_uploaded)
-                    binding.statusIcon.isVisible = true
-                }
-                UploadDao.STATUS_FAILED -> {
-                    binding.statusIcon.setImageResource(R.drawable.ic_upload_failed)
-                    binding.statusIcon.isVisible = true
-                }
-                else -> binding.statusIcon.isVisible = false
+        fun bind(item: GalleryItem, selected: Boolean) {
+            val context = binding.root.context
+            val source = item.thumbnailSource
+            val data: Any = when (source) {
+                is ThumbnailSource.LocalUri -> source.uri
+                is ThumbnailSource.B2Path -> source
             }
+            val request = ImageRequest.Builder(context)
+                .data(data)
+                .placeholder(R.drawable.thumbnail_placeholder)
+                .error(R.drawable.thumbnail_error)
+                .target(binding.photoImage)
+                .build()
+            imageLoader.enqueue(request)
+
+            val queued = (item as? GalleryItem.LocalOnly)?.queuedRecord
+            binding.progress.isVisible = queued?.status == UploadDao.STATUS_UPLOADING
+            binding.badge.setImageResource(badgeFor(item))
+            binding.selectionScrim.isVisible = selected
 
             binding.root.setOnClickListener { onTap(item) }
             binding.root.setOnLongClickListener {
                 onLongPress(item)
                 true
             }
+        }
+
+        private fun badgeFor(item: GalleryItem): Int = when (item) {
+            is GalleryItem.Synced -> R.drawable.ic_badge_synced
+            is GalleryItem.CloudOnly -> R.drawable.ic_badge_cloud_only
+            is GalleryItem.LocalOnly -> when (item.queuedRecord?.status) {
+                UploadDao.STATUS_FAILED, UploadDao.STATUS_PERMANENTLY_FAILED -> R.drawable.ic_upload_failed
+                UploadDao.STATUS_UPLOADED -> R.drawable.ic_cloud_uploaded
+                else -> R.drawable.ic_badge_local_only
+            }
+        }
+    }
+
+    companion object {
+        private val DIFF = object : DiffUtil.ItemCallback<GalleryItem>() {
+            override fun areItemsTheSame(oldItem: GalleryItem, newItem: GalleryItem): Boolean =
+                oldItem.id == newItem.id
+
+            override fun areContentsTheSame(oldItem: GalleryItem, newItem: GalleryItem): Boolean =
+                oldItem == newItem
         }
     }
 }

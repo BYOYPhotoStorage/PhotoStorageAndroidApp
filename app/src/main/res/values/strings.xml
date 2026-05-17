@@ -35,4 +35,46 @@
     <string name="status_caught_up">All caught up</string>
     <string name="status_wifi_only">· Wi-Fi only</string>
     <string name="status_manual">· Manual mode</string>
+
+    <string name="view_mode_local">Local</string>
+    <string name="view_mode_cloud">Cloud</string>
+    <string name="view_mode_merged">Merged</string>
+    <string name="action_backup_index_now">Back up index now</string>
+    <string name="action_restore_index">Restore index from cloud</string>
+    <string name="index_never_synced">Index not yet backed up</string>
+    <string name="index_synced_at">Index last backed up %1$s</string>
+    <string name="delete_local_title">Delete from this device?</string>
+    <string name="delete_local_body">Cloud copy will remain.</string>
+    <string name="delete_cloud_title">Delete from cloud?</string>
+    <string name="delete_cloud_body">Local copy on this device will remain.</string>
+    <string name="delete_merged_title">Delete from phone and cloud?</string>
+    <string name="delete_merged_body">This will remove the photo from both your phone and your cloud backup. This cannot be undone.</string>
+    <string name="delete_button">Delete</string>
+    <string name="delete_both_button">Delete from both</string>
+    <string name="tile_badge_desc">Photo state</string>
+    <string name="selection_title">%1$d selected</string>
+    <string name="action_delete">Delete</string>
+    <string name="index_backup_started">Backing up index…</string>
+    <string name="restore_index_unavailable">Restore not available yet.</string>
+
+    <string name="recovery_checking">Checking for backup index…</string>
+    <string name="recovery_found_title">Restore your previous backup index?</string>
+    <string name="recovery_found_body">We found an index from %1$s. Restoring lets you see your existing cloud photos without rescanning.</string>
+    <string name="recovery_found_body_unknown">We found a backup index from a previous install. Restoring lets you see your existing cloud photos without rescanning.</string>
+    <string name="recovery_restoring">Restoring backup index…</string>
+    <string name="recovery_restored_title">Restored</string>
+    <string name="recovery_restored_body">Restored %1$d photos from your previous backup.</string>
+    <string name="recovery_failed_title">We could not restore the index</string>
+    <string name="recovery_failed_body">%1$s You can start fresh and the app will rescan your gallery.</string>
+    <string name="recovery_restore_button">Restore</string>
+    <string name="recovery_start_fresh_button">Start fresh</string>
+    <string name="catchup_title">What should we back up?</string>
+    <string name="catchup_body_with_date">Your index has photos up to %1$s.</string>
+    <string name="catchup_body_no_date">We will scan your gallery and back up everything not already in your cloud.</string>
+    <string name="catchup_from_date">Catch up from this date</string>
+    <string name="catchup_full">Full rescan</string>
+    <string name="catchup_skip">Skip for now</string>
+    <string name="recovery_replace_confirm">This will replace your current index. Continue?</string>
+    <string name="recovery_index_too_new">The cloud index uses a newer format than this app supports. Please update the app and try again.</string>
+    <string name="recovery_index_invalid">The downloaded index is not valid.</string>
 </resources>

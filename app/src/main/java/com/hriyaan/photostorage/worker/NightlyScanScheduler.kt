@@ -2,8 +2,11 @@ package com.hriyaan.photostorage.worker
 
 import android.content.Context
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.hriyaan.photostorage.data.PrefsStore
@@ -34,6 +37,33 @@ object NightlyScanScheduler {
             "nightly_scan",
             ExistingPeriodicWorkPolicy.UPDATE,
             workRequest
+        )
+    }
+
+    fun runOnce(context: Context, since: Long?) {
+        val prefsStore = PrefsStore(context)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(
+                if (prefsStore.isWifiOnly()) NetworkType.UNMETERED
+                else NetworkType.CONNECTED
+            )
+            .build()
+
+        val inputData = if (since != null) {
+            Data.Builder().putLong(NightlyScanWorker.KEY_SINCE, since).build()
+        } else {
+            Data.EMPTY
+        }
+
+        val request = OneTimeWorkRequestBuilder<NightlyScanWorker>()
+            .setConstraints(constraints)
+            .setInputData(inputData)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "nightly_scan_now",
+            ExistingWorkPolicy.REPLACE,
+            request
         )
     }
 

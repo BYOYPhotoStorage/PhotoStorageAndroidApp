@@ -3,10 +3,12 @@ package com.hriyaan.photostorage.data
 import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteOpenHelper
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CLOUD_DELETED_AT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CREATED_AT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_DATE_TAKEN
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_FILENAME
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_ID
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_LOCAL_PRESENT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_LOCAL_URI
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_NEXT_RETRY_AT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_PHOTO_B2_PATH
@@ -26,6 +28,7 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         const val STATUS_UPLOADED = "uploaded"
         const val STATUS_FAILED = "failed"
         const val STATUS_PERMANENTLY_FAILED = "permanently_failed"
+        const val STATUS_CLOUD_DELETED = "cloud_deleted"
 
         private const val MAX_RETRIES = 5
     }
@@ -44,6 +47,8 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
             record.nextRetryAt?.let { put(COL_NEXT_RETRY_AT, it) }
             record.sha256?.let { put(COL_SHA256, it) }
             put(COL_CREATED_AT, record.createdAt)
+            put(COL_LOCAL_PRESENT, if (record.localPresent) 1 else 0)
+            record.cloudDeletedAt?.let { put(COL_CLOUD_DELETED_AT, it) }
         }
         return helper.writableDatabase.insertOrThrow(TABLE_UPLOADS, null, values)
     }
@@ -185,6 +190,127 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         )
     }
 
+    fun getCloudView(): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_STATUS = ? AND $COL_CLOUD_DELETED_AT IS NULL",
+            arrayOf(STATUS_UPLOADED),
+            null,
+            null,
+            "$COL_DATE_TAKEN DESC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun getCloudViewBefore(dateTaken: Long): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_STATUS = ? AND $COL_CLOUD_DELETED_AT IS NULL AND $COL_DATE_TAKEN < ?",
+            arrayOf(STATUS_UPLOADED, dateTaken.toString()),
+            null,
+            null,
+            "$COL_DATE_TAKEN DESC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun getLatestUploadedAt(): Long? {
+        helper.readableDatabase.rawQuery(
+            "SELECT MAX($COL_UPLOADED_AT) FROM $TABLE_UPLOADS WHERE $COL_STATUS = ?",
+            arrayOf(STATUS_UPLOADED)
+        ).use { c ->
+            return if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    }
+
+    fun setLocalPresent(id: Long, present: Boolean): Int {
+        val values = ContentValues().apply {
+            put(COL_LOCAL_PRESENT, if (present) 1 else 0)
+        }
+        return helper.writableDatabase.update(
+            TABLE_UPLOADS,
+            values,
+            "$COL_ID = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun softDeleteCloud(id: Long, now: Long): Int {
+        val values = ContentValues().apply {
+            put(COL_STATUS, STATUS_CLOUD_DELETED)
+            put(COL_CLOUD_DELETED_AT, now)
+        }
+        return helper.writableDatabase.update(
+            TABLE_UPLOADS,
+            values,
+            "$COL_ID = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun getSoftDeletedOlderThan(cutoff: Long): List<UploadRecord> {
+        helper.readableDatabase.query(
+            TABLE_UPLOADS,
+            null,
+            "$COL_STATUS = ? AND $COL_CLOUD_DELETED_AT <= ?",
+            arrayOf(STATUS_CLOUD_DELETED, cutoff.toString()),
+            null,
+            null,
+            "$COL_CLOUD_DELETED_AT ASC"
+        ).use { c ->
+            val out = ArrayList<UploadRecord>(c.count)
+            while (c.moveToNext()) out += c.toRecord()
+            return out
+        }
+    }
+
+    fun hardDelete(id: Long): Int {
+        return helper.writableDatabase.delete(
+            TABLE_UPLOADS,
+            "$COL_ID = ?",
+            arrayOf(id.toString())
+        )
+    }
+
+    fun replaceAll(records: List<UploadRecord>) {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(TABLE_UPLOADS, null, null)
+            for (record in records) {
+                val values = ContentValues().apply {
+                    if (record.id != 0L) put(COL_ID, record.id)
+                    put(COL_LOCAL_URI, record.localUri)
+                    put(COL_FILENAME, record.filename)
+                    put(COL_SIZE, record.size)
+                    put(COL_DATE_TAKEN, record.dateTaken)
+                    put(COL_PHOTO_B2_PATH, record.photoB2Path)
+                    put(COL_THUMBNAIL_B2_PATH, record.thumbnailB2Path)
+                    put(COL_STATUS, record.status)
+                    record.uploadedAt?.let { put(COL_UPLOADED_AT, it) }
+                    put(COL_RETRY_COUNT, record.retryCount)
+                    record.nextRetryAt?.let { put(COL_NEXT_RETRY_AT, it) }
+                    record.sha256?.let { put(COL_SHA256, it) }
+                    put(COL_CREATED_AT, record.createdAt)
+                    put(COL_LOCAL_PRESENT, if (record.localPresent) 1 else 0)
+                    record.cloudDeletedAt?.let { put(COL_CLOUD_DELETED_AT, it) }
+                }
+                db.insertOrThrow(TABLE_UPLOADS, null, values)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     private fun Cursor.toRecord(): UploadRecord = UploadRecord(
         id = getLong(getColumnIndexOrThrow(COL_ID)),
         localUri = getString(getColumnIndexOrThrow(COL_LOCAL_URI)),
@@ -198,7 +324,9 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         retryCount = getInt(getColumnIndexOrThrow(COL_RETRY_COUNT)),
         nextRetryAt = getLongOrNull(COL_NEXT_RETRY_AT),
         sha256 = getStringOrNull(COL_SHA256),
-        createdAt = getLong(getColumnIndexOrThrow(COL_CREATED_AT))
+        createdAt = getLong(getColumnIndexOrThrow(COL_CREATED_AT)),
+        localPresent = getInt(getColumnIndexOrThrow(COL_LOCAL_PRESENT)) == 1,
+        cloudDeletedAt = getLongOrNull(COL_CLOUD_DELETED_AT)
     )
 
     private fun Cursor.getStringOrNull(column: String): String? {
