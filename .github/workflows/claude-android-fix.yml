@@ -28,9 +28,9 @@ env:
   CI: "true"
 
   # -- Claude Configuration --
-  CLAUDE_MAX_TURNS_INITIAL: "30"
-  CLAUDE_MAX_TURNS_FIX: "20"
-  CLAUDE_MAX_BUDGET_USD: "10.00"
+  CLAUDE_MAX_TURNS_INITIAL: "200"
+  CLAUDE_MAX_TURNS_FIX: "60"
+  CLAUDE_MAX_BUDGET_USD: "40.00"
   ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/"
 
   # -- Iteration Limits --
