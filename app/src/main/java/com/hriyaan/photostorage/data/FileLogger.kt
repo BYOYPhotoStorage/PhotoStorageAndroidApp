@@ -10,7 +10,8 @@ import java.util.Locale
 class FileLogger private constructor(context: Context) {
 
     private val prefs = PrefsStore(context.applicationContext)
-    private val logFile = File(context.applicationContext.filesDir, "logs/app.log")
+    private val logDir = File(context.applicationContext.filesDir, "logs").apply { mkdirs() }
+    private val logFile = File(logDir, "app.log")
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
     fun d(tag: String, message: String) = maybeWrite("D", tag, message)
@@ -22,16 +23,18 @@ class FileLogger private constructor(context: Context) {
     fun start() {
         prefs.setDiagnosticsEnabled(true)
         prefs.setDiagnosticsStartedAt(System.currentTimeMillis())
+        i("FileLogger", "Diagnostics started")
     }
 
     fun stop() {
+        i("FileLogger", "Diagnostics stopped")
         prefs.setDiagnosticsEnabled(false)
         prefs.setDiagnosticsStartedAt(null)
     }
 
     fun isRunning(): Boolean = prefs.isDiagnosticsEnabled()
 
-    fun getLogFile(): File? = logFile.takeIf { it.exists() }
+    fun getLogFile(): File = logFile
 
     fun getLogSizeBytes(): Long = logFile.length()
 

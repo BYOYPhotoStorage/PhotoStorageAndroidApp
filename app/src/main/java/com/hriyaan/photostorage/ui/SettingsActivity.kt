@@ -456,7 +456,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val logger = FileLogger.getInstance(this)
         val logFile = logger.getLogFile()
-        if (logFile == null) {
+        if (!logFile.exists() || logFile.length() == 0L) {
             Toast.makeText(this, R.string.settings_diagnostics_empty, Toast.LENGTH_SHORT).show()
             return
         }
