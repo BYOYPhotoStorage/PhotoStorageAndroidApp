@@ -66,6 +66,53 @@ class PrefsStore(context: Context) {
         prefs.edit().putLong(LAST_SCAN_TIMESTAMP, timestamp).apply()
     }
 
+    fun getGalleryViewMode(): String {
+        val raw = prefs.getString(KEY_GALLERY_VIEW_MODE, null)
+        return if (raw.isNullOrEmpty()) MODE_MERGED else raw
+    }
+
+    fun setGalleryViewMode(mode: String) {
+        val normalized = if (mode in VALID_MODES) mode else MODE_MERGED
+        prefs.edit().putString(KEY_GALLERY_VIEW_MODE, normalized).apply()
+    }
+
+    fun getLastSyncedIndexHash(): String? {
+        return prefs.getString(KEY_LAST_SYNCED_INDEX_HASH, null)
+    }
+
+    fun setLastSyncedIndexHash(hash: String?) {
+        val editor = prefs.edit()
+        if (hash == null) {
+            editor.remove(KEY_LAST_SYNCED_INDEX_HASH)
+        } else {
+            editor.putString(KEY_LAST_SYNCED_INDEX_HASH, hash)
+        }
+        editor.apply()
+    }
+
+    fun getLastIndexSyncAt(): Long? {
+        val value = prefs.getLong(KEY_LAST_INDEX_SYNC_AT, -1L)
+        return if (value == -1L) null else value
+    }
+
+    fun setLastIndexSyncAt(timestamp: Long?) {
+        val editor = prefs.edit()
+        if (timestamp == null) {
+            editor.remove(KEY_LAST_INDEX_SYNC_AT)
+        } else {
+            editor.putLong(KEY_LAST_INDEX_SYNC_AT, timestamp)
+        }
+        editor.apply()
+    }
+
+    fun hasCompletedRecoveryFlow(): Boolean {
+        return prefs.getBoolean(KEY_RECOVERY_FLOW_COMPLETED, false)
+    }
+
+    fun setRecoveryFlowCompleted(value: Boolean) {
+        prefs.edit().putBoolean(KEY_RECOVERY_FLOW_COMPLETED, value).apply()
+    }
+
     companion object {
         private const val PREFS_FILE = "b2_credentials"
         private const val KEY_ID = "key_id"
@@ -74,5 +121,14 @@ class PrefsStore(context: Context) {
         private const val AUTO_UPLOAD_ENABLED = "auto_upload_enabled"
         private const val WIFI_ONLY = "wifi_only_uploads"
         private const val LAST_SCAN_TIMESTAMP = "last_scan_timestamp"
+        private const val KEY_GALLERY_VIEW_MODE = "gallery_view_mode"
+        private const val KEY_LAST_SYNCED_INDEX_HASH = "last_synced_index_hash"
+        private const val KEY_LAST_INDEX_SYNC_AT = "last_index_sync_at"
+        private const val KEY_RECOVERY_FLOW_COMPLETED = "recovery_flow_completed"
+
+        private const val MODE_LOCAL = "local"
+        private const val MODE_CLOUD = "cloud"
+        private const val MODE_MERGED = "merged"
+        private val VALID_MODES = setOf(MODE_LOCAL, MODE_CLOUD, MODE_MERGED)
     }
 }

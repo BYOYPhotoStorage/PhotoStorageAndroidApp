@@ -1,9 +1,19 @@
 package com.hriyaan.photostorage.b2
 
 import aws.sdk.kotlin.services.s3.S3Client
+import aws.sdk.kotlin.services.s3.model.DeleteObjectRequest
+import aws.sdk.kotlin.services.s3.model.GetObjectRequest
+import aws.sdk.kotlin.services.s3.model.HeadObjectRequest
 import aws.sdk.kotlin.services.s3.model.ListBucketsRequest
+import aws.sdk.kotlin.services.s3.model.NoSuchKey
+import aws.sdk.kotlin.services.s3.model.NotFound
 import aws.sdk.kotlin.services.s3.model.PutObjectRequest
 import aws.smithy.kotlin.runtime.content.ByteStream
+import aws.smithy.kotlin.runtime.content.writeToFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 
 class S3Uploader(
     private val client: S3Client,
@@ -30,6 +40,51 @@ class S3Uploader(
             this.checksumAlgorithm = null
         })
         Unit
+    }
+
+    suspend fun deleteObject(path: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            try {
+                client.deleteObject(DeleteObjectRequest {
+                    this.bucket = this@S3Uploader.bucket
+                    this.key = path
+                })
+            } catch (_: NoSuchKey) {
+            } catch (_: NotFound) {
+            }
+            Unit
+        }
+    }
+
+    suspend fun headObject(path: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            try {
+                client.headObject(HeadObjectRequest {
+                    this.bucket = this@S3Uploader.bucket
+                    this.key = path
+                })
+                true
+            } catch (_: NotFound) {
+                false
+            } catch (_: NoSuchKey) {
+                false
+            }
+        }
+    }
+
+    suspend fun downloadObject(path: String, dest: File): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            client.getObject(GetObjectRequest {
+                this.bucket = this@S3Uploader.bucket
+                this.key = path
+            }) { response ->
+                val body = response.body ?: throw IOException("Empty response body for $path")
+                body.writeToFile(dest)
+            }
+            Unit
+        }.onFailure {
+            runCatching { dest.delete() }
+        }
     }
 
     fun close() {

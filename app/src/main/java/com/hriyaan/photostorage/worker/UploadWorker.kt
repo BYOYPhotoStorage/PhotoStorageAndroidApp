@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import aws.sdk.kotlin.services.s3.model.S3Exception
 import aws.smithy.kotlin.runtime.content.ByteStream
+import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
@@ -29,6 +30,7 @@ class UploadWorker(
 ) {
 
     private val prefsStore = PrefsStore(context)
+    private val galleryRepository = (context.applicationContext as PhotoBackupApp).galleryRepository
 
     suspend fun processQueue() {
         if (prefsStore.isWifiOnly() && isOnMeteredNetwork()) {
@@ -72,6 +74,7 @@ class UploadWorker(
             notificationManager.showProgressNotification(current, total)
 
             uploadDao.updateStatus(record.id, UploadDao.STATUS_UPLOADING)
+            galleryRepository.invalidate()
 
             val wasAlreadyPermanent = record.status == UploadDao.STATUS_PERMANENTLY_FAILED
             val willBecomePermanent = record.retryCount >= 4
@@ -152,11 +155,13 @@ class UploadWorker(
             ).getOrThrow()
 
             uploadDao.setUploadedPaths(record.id, photoKey, thumbKey, System.currentTimeMillis())
+            galleryRepository.invalidate()
             Result.success(Unit)
         } catch (e: S3Exception) {
             val errorCode = e.sdkErrorMetadata.errorCode
             if (errorCode in AUTH_ERROR_CODES) {
                 uploadDao.updateStatus(record.id, UploadDao.STATUS_PERMANENTLY_FAILED)
+                galleryRepository.invalidate()
                 notificationManager.showAuthFailureNotification()
                 Result.failure(e)
             } else {
@@ -179,6 +184,7 @@ class UploadWorker(
             uploadDao.updateRetry(record.id, newRetryCount, nextRetry)
             uploadDao.updateStatus(record.id, UploadDao.STATUS_FAILED)
         }
+        galleryRepository.invalidate()
     }
 
     private fun isOnMeteredNetwork(): Boolean {

@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.smithy.okhttp)
 
     implementation(libs.glide)
+    implementation(libs.coil)
 
     implementation(libs.androidx.security.crypto)
 

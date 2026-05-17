@@ -21,6 +21,7 @@ import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.dedup.DuplicateDetector
+import com.hriyaan.photostorage.gallery.GalleryRepository
 import com.hriyaan.photostorage.notification.UploadNotificationManager
 import com.hriyaan.photostorage.thumbnail.ThumbnailGen
 import com.hriyaan.photostorage.worker.UploadWorker
@@ -38,6 +39,7 @@ class UploadForegroundService : Service() {
     private lateinit var prefsStore: PrefsStore
     private lateinit var notificationManager: UploadNotificationManager
     private lateinit var duplicateDetector: DuplicateDetector
+    private lateinit var galleryRepository: GalleryRepository
     private var uploadWorker: UploadWorker? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -66,6 +68,7 @@ class UploadForegroundService : Service() {
         prefsStore = app.prefsStore
         notificationManager = UploadNotificationManager(this)
         duplicateDetector = DuplicateDetector(this, uploadDao)
+        galleryRepository = app.galleryRepository
 
         val creds = prefsStore.getCredentials()
         if (creds != null) {
@@ -143,6 +146,7 @@ class UploadForegroundService : Service() {
             prefsStore.setLastScanTimestamp(System.currentTimeMillis())
         } else {
             prefsStore.setLastScanTimestamp(newestTimestamp)
+            galleryRepository.invalidate()
         }
 
         triggerWorker()

@@ -10,6 +10,9 @@ class UploadDatabase(context: Context) {
 
     val dao: UploadDao by lazy { UploadDao(helper) }
 
+    val writableDatabase: SQLiteDatabase
+        get() = helper.writableDatabase
+
     fun close() {
         helper.close()
     }

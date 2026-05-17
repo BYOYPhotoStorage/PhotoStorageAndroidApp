@@ -22,6 +22,39 @@
         android:orientation="vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/viewModeGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/modeLocal"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/view_mode_local" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/modeCloud"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/view_mode_cloud" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/modeMerged"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/view_mode_merged" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
         <LinearLayout
             android:id="@+id/statusBar"
             android:layout_width="match_parent"
@@ -54,6 +87,15 @@
                 android:text="@string/switch_wifi"
                 android:textSize="12sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/indexSyncStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:textSize="12sp"
+            tools:text="Index last backed up 2 hours ago" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/galleryRecyclerView"
