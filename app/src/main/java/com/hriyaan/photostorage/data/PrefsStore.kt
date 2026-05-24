@@ -113,14 +113,36 @@ class PrefsStore(context: Context) {
         prefs.edit().putBoolean(KEY_RECOVERY_FLOW_COMPLETED, value).apply()
     }
 
+    fun getFirstBackupSince(): Long {
+        return prefs.getLong(KEY_FIRST_BACKUP_SINCE, -1L).let {
+            if (it == -1L) {
+                // Migrate from old string-based scope
+                val scope = prefs.getString(KEY_FIRST_BACKUP_SCOPE, null)
+                val since = if (scope == FIRST_BACKUP_SCOPE_ALL) 0L else System.currentTimeMillis()
+                setFirstBackupSince(since)
+                since
+            } else {
+                it
+            }
+        }
+    }
+
+    fun setFirstBackupSince(timestamp: Long) {
+        prefs.edit()
+            .putLong(KEY_FIRST_BACKUP_SINCE, timestamp)
+            .putString(KEY_FIRST_BACKUP_SCOPE, if (timestamp == 0L) FIRST_BACKUP_SCOPE_ALL else FIRST_BACKUP_SCOPE_TODAY)
+            .apply()
+    }
+
     fun getFirstBackupScope(): String {
-        val raw = prefs.getString(KEY_FIRST_BACKUP_SCOPE, null)
-        return if (raw != null && raw in VALID_FIRST_BACKUP_SCOPES) raw else FIRST_BACKUP_SCOPE_TODAY
+        val since = getFirstBackupSince()
+        return if (since == 0L) FIRST_BACKUP_SCOPE_ALL else FIRST_BACKUP_SCOPE_TODAY
     }
 
     fun setFirstBackupScope(scope: String) {
         val normalized = if (scope in VALID_FIRST_BACKUP_SCOPES) scope else FIRST_BACKUP_SCOPE_TODAY
-        prefs.edit().putString(KEY_FIRST_BACKUP_SCOPE, normalized).apply()
+        val since = if (normalized == FIRST_BACKUP_SCOPE_ALL) 0L else System.currentTimeMillis()
+        setFirstBackupSince(since)
     }
 
     fun hasCompletedFirstBackupFlow(): Boolean {
@@ -333,6 +355,7 @@ class PrefsStore(context: Context) {
         private const val KEY_RECOVERY_FLOW_COMPLETED = "recovery_flow_completed"
 
         private const val KEY_FIRST_BACKUP_SCOPE = "first_backup_scope"
+        private const val KEY_FIRST_BACKUP_SINCE = "first_backup_since"
         private const val KEY_FIRST_BACKUP_FLOW_COMPLETED = "first_backup_flow_completed"
         private const val KEY_VIDEOS_ENABLED = "videos_enabled"
         private const val KEY_VIDEO_QUALITY_MODE = "video_quality_mode"

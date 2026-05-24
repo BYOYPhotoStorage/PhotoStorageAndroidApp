@@ -1,6 +1,7 @@
 package com.hriyaan.photostorage.worker
 
 import android.content.Context
+import android.provider.MediaStore
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.hriyaan.photostorage.PhotoBackupApp
@@ -23,11 +24,20 @@ class InitialBackfillWorker(
         val dao = app.uploadDatabase.dao
         val scanner = MediaStoreScanner(applicationContext)
 
-        val photos = scanner.scanImages(since = null)
+        val since = inputData.getLong(KEY_SINCE, 0L)
+        val sinceValue = if (since <= 0L) null else since
+
+        val photos = scanner.scanImages(
+            since = sinceValue,
+            dateColumn = MediaStore.Images.Media.DATE_TAKEN
+        )
         photos.forEach { enqueueIfNew(it, dao) }
 
         if (prefs.getVideosEnabled()) {
-            val videos = scanner.scanVideos(since = null)
+            val videos = scanner.scanVideos(
+                since = sinceValue,
+                dateColumn = MediaStore.Video.Media.DATE_TAKEN
+            )
             videos.forEach { enqueueIfNew(it, dao) }
         }
 
@@ -55,5 +65,9 @@ class InitialBackfillWorker(
                 mediaType = item.mediaType.toDbValue()
             )
         )
+    }
+
+    companion object {
+        const val KEY_SINCE = "since"
     }
 }

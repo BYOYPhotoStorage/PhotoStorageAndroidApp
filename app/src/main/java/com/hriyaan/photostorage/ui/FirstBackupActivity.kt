@@ -1,6 +1,7 @@
 package com.hriyaan.photostorage.ui
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -18,19 +19,25 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.service.UploadForegroundService
 import com.hriyaan.photostorage.worker.InitialBackfillWorker
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class FirstBackupActivity : AppCompatActivity() {
 
     private enum class Step { ENABLE, SCOPE, VIDEOS, DONE }
+    private enum class ScopeOption { NEW_ONLY, WEEKS_2, WEEKS_4, ALL, CUSTOM }
 
     private var step: Step = Step.ENABLE
     private var autoUploadChoice: Boolean? = null
-    private var scopeChoice: String = "today"
+    private var scopeChoice: ScopeOption = ScopeOption.NEW_ONLY
+    private var customDateMs: Long? = null
     private var videosChoice: Boolean = false
 
     private lateinit var titleView: TextView
@@ -120,28 +127,84 @@ class FirstBackupActivity : AppCompatActivity() {
         btnSecondary.visibility = Button.GONE
 
         val radioGroup = RadioGroup(this).apply {
-            val todayBtn = RadioButton(this@FirstBackupActivity).apply {
-                text = getString(R.string.first_backup_scope_today)
-                id = R.id.radio_today
-                isChecked = true
+            val newOnlyBtn = RadioButton(this@FirstBackupActivity).apply {
+                text = getString(R.string.first_backup_scope_new_only)
+                id = R.id.radio_new_only
+                isChecked = scopeChoice == ScopeOption.NEW_ONLY
+            }
+            val weeks2Btn = RadioButton(this@FirstBackupActivity).apply {
+                text = getString(R.string.first_backup_scope_2_weeks)
+                id = R.id.radio_2_weeks
+                isChecked = scopeChoice == ScopeOption.WEEKS_2
+            }
+            val weeks4Btn = RadioButton(this@FirstBackupActivity).apply {
+                text = getString(R.string.first_backup_scope_4_weeks)
+                id = R.id.radio_4_weeks
+                isChecked = scopeChoice == ScopeOption.WEEKS_4
             }
             val allBtn = RadioButton(this@FirstBackupActivity).apply {
                 text = getString(R.string.first_backup_scope_all)
                 id = R.id.radio_all
+                isChecked = scopeChoice == ScopeOption.ALL
             }
-            addView(todayBtn)
+            val customBtn = RadioButton(this@FirstBackupActivity).apply {
+                text = customDateLabel()
+                id = R.id.radio_custom_date
+                isChecked = scopeChoice == ScopeOption.CUSTOM
+            }
+            addView(newOnlyBtn)
+            addView(weeks2Btn)
+            addView(weeks4Btn)
             addView(allBtn)
+            addView(customBtn)
+
+            setOnCheckedChangeListener { _, checkedId ->
+                scopeChoice = when (checkedId) {
+                    R.id.radio_2_weeks -> ScopeOption.WEEKS_2
+                    R.id.radio_4_weeks -> ScopeOption.WEEKS_4
+                    R.id.radio_all -> ScopeOption.ALL
+                    R.id.radio_custom_date -> ScopeOption.CUSTOM
+                    else -> ScopeOption.NEW_ONLY
+                }
+            }
         }
         contentSlot.addView(radioGroup)
 
         btnPrimary.text = getString(R.string.first_backup_scope_continue)
         btnPrimary.setOnClickListener {
-            scopeChoice = when (radioGroup.checkedRadioButtonId) {
-                R.id.radio_all -> "all"
-                else -> "today"
+            if (scopeChoice == ScopeOption.CUSTOM && customDateMs == null) {
+                showDatePicker(radioGroup)
+            } else {
+                advanceTo(Step.VIDEOS)
             }
-            advanceTo(Step.VIDEOS)
         }
+    }
+
+    private fun customDateLabel(): String {
+        val date = customDateMs
+        return if (date != null) {
+            val fmt = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+            getString(R.string.first_backup_scope_custom_format, fmt.format(date))
+        } else {
+            getString(R.string.first_backup_scope_custom)
+        }
+    }
+
+    private fun showDatePicker(radioGroup: RadioGroup) {
+        val cal = Calendar.getInstance()
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                cal.set(year, month, day, 0, 0, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                customDateMs = cal.timeInMillis
+                val customBtn = radioGroup.findViewById<RadioButton>(R.id.radio_custom_date)
+                customBtn?.text = customDateLabel()
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
     }
 
     private fun renderVideos() {
@@ -172,17 +235,42 @@ class FirstBackupActivity : AppCompatActivity() {
         val prefs = app.prefsStore
 
         val enabled = autoUploadChoice == true
+        val since = when (scopeChoice) {
+            ScopeOption.NEW_ONLY -> System.currentTimeMillis()
+            ScopeOption.WEEKS_2 -> System.currentTimeMillis() - 14L * 24 * 60 * 60 * 1000
+            ScopeOption.WEEKS_4 -> System.currentTimeMillis() - 28L * 24 * 60 * 60 * 1000
+            ScopeOption.ALL -> 0L
+            ScopeOption.CUSTOM -> customDateMs ?: System.currentTimeMillis()
+        }
 
         prefs.setAutoUploadEnabled(enabled)
-        prefs.setFirstBackupScope(scopeChoice)
+        prefs.setFirstBackupSince(since)
         prefs.setVideosEnabled(videosChoice)
         prefs.setFirstBackupFlowCompleted(true)
 
-        if (enabled && scopeChoice == "all") {
+        if (enabled && since == 0L) {
             WorkManager.getInstance(this).enqueueUniqueWork(
                 "initial_backfill",
                 ExistingWorkPolicy.KEEP,
                 OneTimeWorkRequestBuilder<InitialBackfillWorker>()
+                    .setInputData(workDataOf(InitialBackfillWorker.KEY_SINCE to 0L))
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(
+                                if (prefs.isWifiOnly()) NetworkType.UNMETERED else NetworkType.CONNECTED
+                            )
+                            .build()
+                    )
+                    .build()
+            )
+        }
+
+        if (enabled && since > 0L) {
+            WorkManager.getInstance(this).enqueueUniqueWork(
+                "initial_backfill",
+                ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<InitialBackfillWorker>()
+                    .setInputData(workDataOf(InitialBackfillWorker.KEY_SINCE to since))
                     .setConstraints(
                         Constraints.Builder()
                             .setRequiredNetworkType(

@@ -132,9 +132,13 @@
     <string name="first_backup_enable_secondary">Not now</string>
 
     <string name="first_backup_scope_title">What should we back up?</string>
-    <string name="first_backup_scope_body">Just photos taken from now on, or your entire gallery history?</string>
-    <string name="first_backup_scope_today">From today only</string>
+    <string name="first_backup_scope_body">Choose how far back to back up your existing photos.</string>
+    <string name="first_backup_scope_new_only">Just new photos</string>
+    <string name="first_backup_scope_2_weeks">Last 2 weeks</string>
+    <string name="first_backup_scope_4_weeks">Last 4 weeks</string>
     <string name="first_backup_scope_all">Entire gallery history</string>
+    <string name="first_backup_scope_custom">Custom date</string>
+    <string name="first_backup_scope_custom_format">Custom: %1$s</string>
     <string name="first_backup_scope_continue">Continue</string>
 
     <string name="first_backup_videos_title">Back up videos too?</string>

@@ -96,7 +96,7 @@ class PhotoBackupApp : Application() {
 
         if (prefsStore.hasCredentials() && prefsStore.isAutoUploadEnabled() &&
             !prefsStore.hasCompletedFirstBackupFlow()) {
-            prefsStore.setFirstBackupScope("today")
+            prefsStore.setFirstBackupSince(0L)
             prefsStore.setVideosEnabled(false)
             prefsStore.setFirstBackupFlowCompleted(true)
         }

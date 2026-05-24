@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 
 class MediaStoreScanner(private val context: Context) {
 
-    suspend fun scanImages(since: Long?): List<MediaItem> = withContext(Dispatchers.IO) {
+    suspend fun scanImages(since: Long?, dateColumn: String = MediaStore.Images.Media.DATE_ADDED): List<MediaItem> = withContext(Dispatchers.IO) {
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
@@ -21,7 +21,7 @@ class MediaStoreScanner(private val context: Context) {
             MediaStore.Images.Media.DATE_TAKEN,
             MediaStore.Images.Media.DATE_ADDED
         )
-        val (selection, args) = sinceSelection(MediaStore.Images.Media.DATE_ADDED, since)
+        val (selection, args) = sinceSelection(dateColumn, since)
 
         val cursor = context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -64,7 +64,7 @@ class MediaStoreScanner(private val context: Context) {
         }
     }
 
-    suspend fun scanVideos(since: Long?): List<MediaItem> = withContext(Dispatchers.IO) {
+    suspend fun scanVideos(since: Long?, dateColumn: String = MediaStore.Video.Media.DATE_ADDED): List<MediaItem> = withContext(Dispatchers.IO) {
         val app = context.applicationContext as PhotoBackupApp
         if (!app.prefsStore.getVideosEnabled()) return@withContext emptyList()
         if (!hasVideoReadPermission()) {
@@ -80,7 +80,7 @@ class MediaStoreScanner(private val context: Context) {
             MediaStore.Video.Media.DATE_ADDED,
             MediaStore.Video.Media.DURATION
         )
-        val (selection, args) = sinceSelection(MediaStore.Video.Media.DATE_ADDED, since)
+        val (selection, args) = sinceSelection(dateColumn, since)
 
         val cursor = context.contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -128,7 +128,12 @@ class MediaStoreScanner(private val context: Context) {
 
     private fun sinceSelection(column: String, since: Long?): Pair<String?, Array<String>?> {
         if (since == null) return null to null
-        return "$column > ?" to arrayOf((since / 1000L).toString())
+        val value = if (column == MediaStore.Images.Media.DATE_TAKEN || column == MediaStore.Video.Media.DATE_TAKEN) {
+            since.toString()
+        } else {
+            (since / 1000L).toString()
+        }
+        return "$column > ?" to arrayOf(value)
     }
 
     private fun hasVideoReadPermission(): Boolean {
