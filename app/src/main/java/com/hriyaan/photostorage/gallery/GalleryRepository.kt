@@ -172,30 +172,38 @@ class GalleryRepository(
 
     private fun queryAllMediaStorePhotos(): List<MediaStorePhoto> {
         val out = ArrayList<MediaStorePhoto>()
+        val selectedBuckets = prefsStore.getSelectedBucketIds()
 
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATE_TAKEN
+            MediaStore.Images.Media.DATE_TAKEN,
+            MediaStore.Images.Media.BUCKET_ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
         )
+        val (imageSelection, imageArgs) = bucketSelection(selectedBuckets, isImage = true)
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             projection,
-            null,
-            null,
+            imageSelection,
+            imageArgs,
             "${MediaStore.Images.Media.DATE_TAKEN} DESC"
         )?.use { c ->
             val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val dateCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+            val bucketIdCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
+            val bucketNameCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
 
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 val filename = c.getString(nameCol) ?: continue
                 val size = c.getLong(sizeCol)
                 val dateTaken = if (c.isNull(dateCol)) 0L else c.getLong(dateCol)
+                val bucketId = c.getString(bucketIdCol)
+                val bucketName = c.getString(bucketNameCol)
                 out += MediaStorePhoto(
                     id = id,
                     uri = ContentUris.withAppendedId(
@@ -205,7 +213,9 @@ class GalleryRepository(
                     filename = filename,
                     size = size,
                     dateTakenMs = dateTaken,
-                    mediaType = "photo"
+                    mediaType = "photo",
+                    bucketId = bucketId,
+                    bucketName = bucketName
                 )
             }
         }
@@ -215,25 +225,32 @@ class GalleryRepository(
                 MediaStore.Video.Media._ID,
                 MediaStore.Video.Media.DISPLAY_NAME,
                 MediaStore.Video.Media.SIZE,
-                MediaStore.Video.Media.DATE_TAKEN
+                MediaStore.Video.Media.DATE_TAKEN,
+                MediaStore.Video.Media.BUCKET_ID,
+                MediaStore.Video.Media.BUCKET_DISPLAY_NAME
             )
+            val (videoSelection, videoArgs) = bucketSelection(selectedBuckets, isImage = false)
             context.contentResolver.query(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 videoProjection,
-                null,
-                null,
+                videoSelection,
+                videoArgs,
                 "${MediaStore.Video.Media.DATE_TAKEN} DESC"
             )?.use { c ->
                 val idCol = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
                 val nameCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
                 val sizeCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
                 val dateCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
+                val bucketIdCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
+                val bucketNameCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
 
                 while (c.moveToNext()) {
                     val id = c.getLong(idCol)
                     val filename = c.getString(nameCol) ?: continue
                     val size = c.getLong(sizeCol)
                     val dateTaken = if (c.isNull(dateCol)) 0L else c.getLong(dateCol)
+                    val bucketId = c.getString(bucketIdCol)
+                    val bucketName = c.getString(bucketNameCol)
                     out += MediaStorePhoto(
                         id = id,
                         uri = ContentUris.withAppendedId(
@@ -243,13 +260,22 @@ class GalleryRepository(
                         filename = filename,
                         size = size,
                         dateTakenMs = dateTaken,
-                        mediaType = "video"
+                        mediaType = "video",
+                        bucketId = bucketId,
+                        bucketName = bucketName
                     )
                 }
             }
         }
 
         return out.sortedByDescending { it.dateTakenMs }
+    }
+
+    private fun bucketSelection(bucketIds: Set<String>?, isImage: Boolean): Pair<String?, Array<String>?> {
+        if (bucketIds.isNullOrEmpty()) return null to null
+        val column = if (isImage) MediaStore.Images.Media.BUCKET_ID else MediaStore.Video.Media.BUCKET_ID
+        val placeholders = bucketIds.joinToString(",") { "?" }
+        return "$column IN ($placeholders)" to bucketIds.toTypedArray()
     }
 
     companion object {

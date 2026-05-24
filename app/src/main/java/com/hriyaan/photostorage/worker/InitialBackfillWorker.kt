@@ -27,16 +27,19 @@ class InitialBackfillWorker(
         val since = inputData.getLong(KEY_SINCE, 0L)
         val sinceValue = if (since <= 0L) null else since
 
+        val selectedBuckets = prefs.getSelectedBucketIds()
         val photos = scanner.scanImages(
             since = sinceValue,
-            dateColumn = MediaStore.Images.Media.DATE_TAKEN
+            dateColumn = MediaStore.Images.Media.DATE_TAKEN,
+            bucketIds = selectedBuckets
         )
         photos.forEach { enqueueIfNew(it, dao) }
 
         if (prefs.getVideosEnabled()) {
             val videos = scanner.scanVideos(
                 since = sinceValue,
-                dateColumn = MediaStore.Video.Media.DATE_TAKEN
+                dateColumn = MediaStore.Video.Media.DATE_TAKEN,
+                bucketIds = selectedBuckets
             )
             videos.forEach { enqueueIfNew(it, dao) }
         }

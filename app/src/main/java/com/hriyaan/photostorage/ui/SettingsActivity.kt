@@ -64,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         bindBackupSection()
+        bindBackupFoldersSection()
         bindVideosSection()
         bindStorageManagementSection()
         bindStorageCostSection()
@@ -81,6 +82,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Switch>(R.id.switch_auto_upload).isChecked = autoUpload
         findViewById<Switch>(R.id.switch_wifi_only).isChecked = prefs.isWifiOnly()
         updateTimingValue()
+        updateBackupFoldersValue()
         updateDeleteStrategyValue()
         updateVideoQualityValue()
         updateVideoResolutionValue()
@@ -92,6 +94,7 @@ class SettingsActivity : AppCompatActivity() {
         updateAboutSection()
         setSectionEnabled(R.id.row_timing, autoUpload)
         setSectionEnabled(R.id.row_wifi_only, autoUpload)
+        setSectionEnabled(R.id.row_backup_folders, autoUpload)
         setSectionEnabled(R.id.row_videos_enabled, autoUpload)
         setSectionEnabled(R.id.row_video_quality, autoUpload)
         setSectionEnabled(R.id.row_video_threshold, autoUpload)
@@ -157,6 +160,63 @@ class SettingsActivity : AppCompatActivity() {
             else -> getString(R.string.settings_timing_immediate)
         }
         findViewById<TextView>(R.id.timing_value).text = value
+    }
+
+    private fun bindBackupFoldersSection() {
+        findViewById<LinearLayout>(R.id.row_backup_folders).setOnClickListener {
+            if (!prefs.isAutoUploadEnabled()) return@setOnClickListener
+            showFolderPickerDialog()
+        }
+    }
+
+    private fun showFolderPickerDialog() {
+        lifecycleScope.launch {
+            val folders = withContext(Dispatchers.IO) {
+                com.hriyaan.photostorage.data.MediaStoreQuery(this@SettingsActivity).queryPhotoFolders()
+            }
+            if (folders.isEmpty()) {
+                Toast.makeText(this@SettingsActivity, "No folders found", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val selected = prefs.getSelectedBucketIds()
+            val folderNames = folders.map { it.bucketName }.toTypedArray()
+            val checked = folders.map { it.bucketId in selected }.toBooleanArray()
+            val mutableChecked = checked.copyOf()
+
+            AlertDialog.Builder(this@SettingsActivity)
+                .setTitle(R.string.settings_backup_folders_dialog_title)
+                .setMultiChoiceItems(folderNames, mutableChecked) { _, which, isChecked ->
+                    mutableChecked[which] = isChecked
+                }
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    val newSelection = folders
+                        .filterIndexed { index, _ -> mutableChecked[index] }
+                        .map { it.bucketId }
+                        .toSet()
+                    prefs.setSelectedBucketIds(newSelection)
+                    updateBackupFoldersValue()
+                    app.galleryRepository.invalidate()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+    }
+
+    private fun updateBackupFoldersValue() {
+        val selected = prefs.getSelectedBucketIds()
+        val textView = findViewById<TextView>(R.id.backup_folders_value)
+        if (selected.isEmpty()) {
+            textView.text = getString(R.string.settings_backup_folders_all)
+        } else {
+            lifecycleScope.launch {
+                val total = withContext(Dispatchers.IO) {
+                    com.hriyaan.photostorage.data.MediaStoreQuery(this@SettingsActivity)
+                        .queryPhotoFolders().size
+                }
+                textView.text = getString(R.string.settings_backup_folders_count, selected.size, total)
+            }
+        }
     }
 
     private fun bindVideosSection() {

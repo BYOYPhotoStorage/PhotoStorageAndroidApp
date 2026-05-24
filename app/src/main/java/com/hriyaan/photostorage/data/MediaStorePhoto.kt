@@ -8,5 +8,13 @@ data class MediaStorePhoto(
     val filename: String,
     val size: Long,
     val dateTakenMs: Long,
-    val mediaType: String = "photo"
+    val mediaType: String = "photo",
+    val bucketId: String? = null,
+    val bucketName: String? = null
+)
+
+data class PhotoFolder(
+    val bucketId: String,
+    val bucketName: String,
+    val itemCount: Int
 )

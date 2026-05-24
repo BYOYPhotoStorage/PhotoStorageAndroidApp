@@ -4,7 +4,11 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -14,6 +18,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -22,16 +28,20 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
+import com.hriyaan.photostorage.data.MediaStoreQuery
+import com.hriyaan.photostorage.data.PhotoFolder
 import com.hriyaan.photostorage.service.UploadForegroundService
 import com.hriyaan.photostorage.worker.InitialBackfillWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
 class FirstBackupActivity : AppCompatActivity() {
 
-    private enum class Step { ENABLE, SCOPE, VIDEOS, DONE }
+    private enum class Step { ENABLE, SCOPE, FOLDERS, VIDEOS, DONE }
     private enum class ScopeOption { NEW_ONLY, WEEKS_2, WEEKS_4, ALL, CUSTOM }
 
     private var step: Step = Step.ENABLE
@@ -39,6 +49,8 @@ class FirstBackupActivity : AppCompatActivity() {
     private var scopeChoice: ScopeOption = ScopeOption.NEW_ONLY
     private var customDateMs: Long? = null
     private var videosChoice: Boolean = false
+    private var selectedFolderIds: MutableSet<String> = mutableSetOf()
+    private var allFolders: List<PhotoFolder> = emptyList()
 
     private lateinit var titleView: TextView
     private lateinit var bodyView: TextView
@@ -66,7 +78,13 @@ class FirstBackupActivity : AppCompatActivity() {
         btnPrimary = findViewById(R.id.btn_primary)
         btnSecondary = findViewById(R.id.btn_secondary)
 
-        renderStep(step)
+        lifecycleScope.launch {
+            allFolders = withContext(Dispatchers.IO) {
+                MediaStoreQuery(this@FirstBackupActivity).queryPhotoFolders()
+            }
+            selectedFolderIds = allFolders.map { it.bucketId }.toMutableSet()
+            renderStep(step)
+        }
     }
 
     override fun onBackPressed() {
@@ -76,9 +94,13 @@ class FirstBackupActivity : AppCompatActivity() {
                 step = Step.ENABLE
                 renderStep(Step.ENABLE)
             }
-            Step.VIDEOS -> {
+            Step.FOLDERS -> {
                 step = Step.SCOPE
                 renderStep(Step.SCOPE)
+            }
+            Step.VIDEOS -> {
+                step = Step.FOLDERS
+                renderStep(Step.FOLDERS)
             }
             Step.DONE -> {
                 step = Step.VIDEOS
@@ -92,6 +114,7 @@ class FirstBackupActivity : AppCompatActivity() {
         when (s) {
             Step.ENABLE -> renderEnable()
             Step.SCOPE -> renderScope()
+            Step.FOLDERS -> renderFolders()
             Step.VIDEOS -> renderVideos()
             Step.DONE -> commitAndFinish()
         }
@@ -175,7 +198,7 @@ class FirstBackupActivity : AppCompatActivity() {
             if (scopeChoice == ScopeOption.CUSTOM && customDateMs == null) {
                 showDatePicker(radioGroup)
             } else {
-                advanceTo(Step.VIDEOS)
+                advanceTo(Step.FOLDERS)
             }
         }
     }
@@ -205,6 +228,35 @@ class FirstBackupActivity : AppCompatActivity() {
             cal.get(Calendar.MONTH),
             cal.get(Calendar.DAY_OF_MONTH)
         ).show()
+    }
+
+    private fun renderFolders() {
+        titleView.text = getString(R.string.first_backup_folders_title)
+        bodyView.text = getString(R.string.first_backup_folders_body)
+
+        btnSecondary.visibility = Button.GONE
+
+        if (allFolders.isEmpty()) {
+            val emptyView = TextView(this).apply {
+                text = "No folders found"
+                textSize = 15f
+            }
+            contentSlot.addView(emptyView)
+        } else {
+            val recyclerView = RecyclerView(this).apply {
+                layoutManager = LinearLayoutManager(this@FirstBackupActivity)
+                adapter = FolderAdapter(
+                    allFolders,
+                    selectedFolderIds
+                )
+            }
+            contentSlot.addView(recyclerView)
+        }
+
+        btnPrimary.text = getString(R.string.first_backup_folders_continue)
+        btnPrimary.setOnClickListener {
+            advanceTo(Step.VIDEOS)
+        }
     }
 
     private fun renderVideos() {
@@ -246,6 +298,7 @@ class FirstBackupActivity : AppCompatActivity() {
         prefs.setAutoUploadEnabled(enabled)
         prefs.setFirstBackupSince(since)
         prefs.setVideosEnabled(videosChoice)
+        prefs.setSelectedBucketIds(selectedFolderIds)
         prefs.setFirstBackupFlowCompleted(true)
 
         if (enabled && since == 0L) {
@@ -287,5 +340,38 @@ class FirstBackupActivity : AppCompatActivity() {
         }
 
         finish()
+    }
+
+    private class FolderAdapter(
+        private val items: List<PhotoFolder>,
+        private val selectedIds: MutableSet<String>
+    ) : RecyclerView.Adapter<FolderAdapter.VH>() {
+
+        override fun getItemCount(): Int = items.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_folder_selection, parent, false)
+            return VH(view)
+        }
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val folder = items[position]
+            holder.nameView.text = folder.bucketName
+            holder.countView.text = holder.itemView.context.resources
+                .getQuantityString(R.plurals.folder_items_count, folder.itemCount, folder.itemCount)
+            holder.checkbox.setOnCheckedChangeListener(null)
+            holder.checkbox.isChecked = folder.bucketId in selectedIds
+            holder.checkbox.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) selectedIds.add(folder.bucketId)
+                else selectedIds.remove(folder.bucketId)
+            }
+        }
+
+        class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            val checkbox: CheckBox = itemView.findViewById(R.id.checkbox)
+            val nameView: TextView = itemView.findViewById(R.id.folder_name)
+            val countView: TextView = itemView.findViewById(R.id.folder_count)
+        }
     }
 }

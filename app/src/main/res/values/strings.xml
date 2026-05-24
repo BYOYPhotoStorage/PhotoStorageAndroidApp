@@ -141,6 +141,10 @@
     <string name="first_backup_scope_custom_format">Custom: %1$s</string>
     <string name="first_backup_scope_continue">Continue</string>
 
+    <string name="first_backup_folders_title">Which folders should we back up?</string>
+    <string name="first_backup_folders_body">Select the folders you want to include. You can change this in settings later.</string>
+    <string name="first_backup_folders_continue">Continue</string>
+
     <string name="first_backup_videos_title">Back up videos too?</string>
     <string name="first_backup_videos_body">Videos can use much more space than photos. You can change this in settings later.</string>
     <string name="first_backup_videos_toggle">Include videos</string>
@@ -156,6 +160,10 @@
     <string name="settings_timing_scheduled">Scheduled (nightly)</string>
     <string name="settings_timing_hybrid">Hybrid</string>
     <string name="settings_wifi_only">Wi-Fi only</string>
+    <string name="settings_backup_folders">Backup folders</string>
+    <string name="settings_backup_folders_all">All folders</string>
+    <string name="settings_backup_folders_count">%1$d of %2$d folders</string>
+    <string name="settings_backup_folders_dialog_title">Select folders to back up</string>
 
     <string name="settings_section_videos">Videos</string>
     <string name="settings_videos_enabled">Include videos</string>
@@ -217,4 +225,9 @@
     <string name="back">Back</string>
     <string name="detail_counter">%1$d / %2$d</string>
     <string name="video_cloud_playback">Cloud video playback not yet supported</string>
+
+    <plurals name="folder_items_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
 </resources>

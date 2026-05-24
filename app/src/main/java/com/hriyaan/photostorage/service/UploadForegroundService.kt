@@ -154,7 +154,9 @@ class UploadForegroundService : Service() {
     private suspend fun handleMediaChange() {
         val lastScan = prefsStore.getLastScanTimestamp()
         val sinceArg = lastScan.takeIf { it > 0L }
-        val items = scanner.scanImages(sinceArg) + scanner.scanVideos(sinceArg)
+        val selectedBuckets = prefsStore.getSelectedBucketIds()
+        val items = scanner.scanImages(sinceArg, bucketIds = selectedBuckets) +
+            scanner.scanVideos(sinceArg, bucketIds = selectedBuckets)
 
         var newestTimestamp = lastScan
         for (item in items) {

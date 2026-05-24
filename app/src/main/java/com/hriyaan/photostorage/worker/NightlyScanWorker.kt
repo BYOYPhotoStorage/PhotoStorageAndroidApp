@@ -26,9 +26,11 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
         val scanner = MediaStoreScanner(applicationContext)
         val duplicateDetector = DuplicateDetector(applicationContext, uploadDao)
 
+        val selectedBuckets = prefsStore.getSelectedBucketIds()
         val sinceFromInput = inputData.getLong(KEY_SINCE, -1L).takeIf { it >= 0L }
         val sinceArg = (sinceFromInput ?: prefsStore.getLastScanTimestamp()).takeIf { it > 0L }
-        val items = scanner.scanImages(sinceArg) + scanner.scanVideos(sinceArg)
+        val items = scanner.scanImages(sinceArg, bucketIds = selectedBuckets) +
+            scanner.scanVideos(sinceArg, bucketIds = selectedBuckets)
 
         var enqueuedCount = 0
         for (item in items) {

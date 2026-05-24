@@ -326,6 +326,14 @@ class PrefsStore(context: Context) {
         editor.apply()
     }
 
+    fun getSelectedBucketIds(): Set<String> {
+        return prefs.getStringSet(KEY_SELECTED_BUCKET_IDS, null) ?: emptySet()
+    }
+
+    fun setSelectedBucketIds(ids: Set<String>) {
+        prefs.edit().putStringSet(KEY_SELECTED_BUCKET_IDS, ids).apply()
+    }
+
     fun registerOnChangedListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }
@@ -372,6 +380,7 @@ class PrefsStore(context: Context) {
         private const val KEY_EGRESS_MONTH_ANCHOR = "cost_dashboard_egress_month_anchor"
         private const val KEY_DIAGNOSTICS_ENABLED = "diagnostics_enabled"
         private const val KEY_DIAGNOSTICS_STARTED_AT = "diagnostics_started_at"
+        private const val KEY_SELECTED_BUCKET_IDS = "selected_bucket_ids"
         private const val DIAGNOSTICS_TIMEOUT_MS = 15L * 60L * 1000L
 
         private const val MODE_LOCAL = "local"
