@@ -27,8 +27,14 @@ class ShareLinkDialog : DialogFragment() {
 
     companion object {
         const val ARG_ITEM_ID = "item_id"
+        const val ARG_ITEM_IDS = "item_ids"
+
         fun newInstance(itemId: String) = ShareLinkDialog().apply {
             arguments = bundleOf(ARG_ITEM_ID to itemId)
+        }
+
+        fun newInstance(itemIds: List<String>) = ShareLinkDialog().apply {
+            arguments = bundleOf(ARG_ITEM_IDS to ArrayList(itemIds))
         }
     }
 
@@ -36,19 +42,29 @@ class ShareLinkDialog : DialogFragment() {
         val view = layoutInflater.inflate(R.layout.dialog_share_link, null)
         val dialog = AlertDialog.Builder(requireContext()).setView(view).create()
         view.findViewById<Button>(R.id.cancel).setOnClickListener { dismiss() }
-        view.findViewById<Button>(R.id.create).setOnClickListener { onCreate(view) }
+        view.findViewById<Button>(R.id.create).setOnClickListener { onCreateClicked(view) }
         return dialog
     }
 
-    private fun onCreate(view: View) {
+    private fun onCreateClicked(view: View) {
         val ttl = when (view.findViewById<RadioGroup>(R.id.ttl_group).checkedRadioButtonId) {
             R.id.ttl_24h -> ShareLinkTtl.ONE_DAY
             R.id.ttl_7d -> ShareLinkTtl.ONE_WEEK
             else -> ShareLinkTtl.ONE_HOUR
         }
-        val itemId = requireArguments().getString(ARG_ITEM_ID)!!
         val app = requireActivity().application as PhotoBackupApp
+        val args = requireArguments()
 
+        val itemIds = args.getStringArrayList(ARG_ITEM_IDS)
+        if (itemIds != null && itemIds.size > 1) {
+            onCreateGalleryLink(app, itemIds, ttl)
+        } else {
+            val itemId = args.getString(ARG_ITEM_ID) ?: itemIds?.firstOrNull() ?: return
+            onCreateSingleLink(app, itemId, ttl)
+        }
+    }
+
+    private fun onCreateSingleLink(app: PhotoBackupApp, itemId: String, ttl: ShareLinkTtl) {
         lifecycleScope.launch {
             val item = app.galleryRepository.findItemById(itemId)
             if (item == null) {
@@ -62,6 +78,36 @@ class ShareLinkDialog : DialogFragment() {
                     copyToClipboard(record.url)
                     val label = requireContext().getString(ttl.labelRes)
                     Toast.makeText(requireContext(), getString(R.string.share_link_created, label), Toast.LENGTH_SHORT).show()
+                    startActivity(buildShareIntent(record.url))
+                }
+                .onFailure {
+                    Toast.makeText(requireContext(), R.string.share_link_error_generic, Toast.LENGTH_SHORT).show()
+                }
+            dismiss()
+        }
+    }
+
+    private fun onCreateGalleryLink(app: PhotoBackupApp, itemIds: List<String>, ttl: ShareLinkTtl) {
+        lifecycleScope.launch {
+            val items = itemIds.mapNotNull { app.galleryRepository.findItemById(it) }
+            val eligible = items.filter { it !is GalleryItem.LocalOnly }
+            if (eligible.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.share_link_error_no_cloud_items, Toast.LENGTH_SHORT).show()
+                dismiss()
+                return@launch
+            }
+            val skipped = items.size - eligible.size
+            val result = app.shareGalleryService.createGalleryLink(eligible, ttl)
+            result
+                .onSuccess { record ->
+                    copyToClipboard(record.url)
+                    val label = requireContext().getString(ttl.labelRes)
+                    val message = if (skipped > 0) {
+                        getString(R.string.share_gallery_created_with_skip, record.itemCount, label, skipped)
+                    } else {
+                        getString(R.string.share_gallery_created, record.itemCount, label)
+                    }
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                     startActivity(buildShareIntent(record.url))
                 }
                 .onFailure {

@@ -12,6 +12,8 @@ class UploadDatabase(context: Context) {
 
     val shareLinkDao: ShareLinkDao by lazy { ShareLinkDao(helper) }
 
+    val shareGalleryDao: ShareGalleryDao by lazy { ShareGalleryDao(helper) }
+
     val writableDatabase: SQLiteDatabase
         get() = helper.writableDatabase
 
@@ -69,9 +71,25 @@ class UploadDatabase(context: Context) {
             )
             db.execSQL("CREATE INDEX idx_share_links_expires_at ON $TABLE_SHARE_LINKS($COL_SHARE_EXPIRES_AT)")
             db.execSQL("CREATE INDEX idx_share_links_upload_id ON $TABLE_SHARE_LINKS($COL_SHARE_UPLOAD_ID)")
+
+            db.execSQL(
+                """
+                CREATE TABLE $TABLE_SHARE_GALLERIES (
+                    $COL_SHARE_GALLERY_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    $COL_SHARE_GALLERY_HTML_B2_PATH TEXT NOT NULL,
+                    $COL_SHARE_GALLERY_URL TEXT NOT NULL,
+                    $COL_SHARE_GALLERY_ITEM_COUNT INTEGER NOT NULL,
+                    $COL_SHARE_GALLERY_CREATED_AT INTEGER NOT NULL,
+                    $COL_SHARE_GALLERY_EXPIRES_AT INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX idx_share_galleries_expires_at ON $TABLE_SHARE_GALLERIES($COL_SHARE_GALLERY_EXPIRES_AT)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_SHARE_LINKS")
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_SHARE_GALLERIES")
             db.execSQL("DROP TABLE IF EXISTS $TABLE_UPLOADS")
             onCreate(db)
         }
@@ -79,7 +97,7 @@ class UploadDatabase(context: Context) {
 
     internal companion object {
         const val DB_NAME = "uploads.db"
-        const val DB_VERSION = 4
+        const val DB_VERSION = 5
 
         const val TABLE_UPLOADS = "uploads"
         const val COL_ID = "id"
@@ -109,5 +127,13 @@ class UploadDatabase(context: Context) {
         const val COL_SHARE_URL = "url"
         const val COL_SHARE_CREATED_AT = "created_at"
         const val COL_SHARE_EXPIRES_AT = "expires_at"
+
+        const val TABLE_SHARE_GALLERIES = "share_galleries"
+        const val COL_SHARE_GALLERY_ID = "id"
+        const val COL_SHARE_GALLERY_HTML_B2_PATH = "html_b2_path"
+        const val COL_SHARE_GALLERY_URL = "url"
+        const val COL_SHARE_GALLERY_ITEM_COUNT = "item_count"
+        const val COL_SHARE_GALLERY_CREATED_AT = "created_at"
+        const val COL_SHARE_GALLERY_EXPIRES_AT = "expires_at"
     }
 }

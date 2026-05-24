@@ -12,6 +12,8 @@ import com.hriyaan.photostorage.gallery.GalleryRepository
 import com.hriyaan.photostorage.gallery.MediaStoreDeleteLauncher
 import com.hriyaan.photostorage.notification.UploadNotificationManager
 import com.hriyaan.photostorage.recovery.IndexRecoveryService
+import com.hriyaan.photostorage.share.ShareGalleryHtmlGenerator
+import com.hriyaan.photostorage.share.ShareGalleryService
 import com.hriyaan.photostorage.share.ShareLinkService
 import com.hriyaan.photostorage.thumbnail.ThumbnailCacheFactory
 import com.hriyaan.photostorage.worker.IndexSyncScheduler
@@ -47,6 +49,9 @@ class PhotoBackupApp : Application() {
     lateinit var shareLinkService: ShareLinkService
         private set
 
+    lateinit var shareGalleryService: ShareGalleryService
+        private set
+
     override fun onCreate() {
         super.onCreate()
 
@@ -77,6 +82,12 @@ class PhotoBackupApp : Application() {
             )
             shareLinkDao = uploadDatabase.shareLinkDao
             shareLinkService = ShareLinkService(s3Uploader, shareLinkDao)
+            shareGalleryService = ShareGalleryService(
+                s3Uploader,
+                uploadDatabase.shareGalleryDao,
+                uploadDatabase.dao,
+                ShareGalleryHtmlGenerator(this)
+            )
         }
 
         IndexSyncScheduler.schedule(this)

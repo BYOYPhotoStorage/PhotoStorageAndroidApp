@@ -109,8 +109,8 @@ class GalleryActivity : AppCompatActivity() {
             mode.title = getString(R.string.selection_title, selection.size)
             val shareItem = menu.findItem(R.id.action_share_link)
             if (shareItem != null) {
-                val canShare = selection.size == 1 &&
-                    adapter.findById(selection.first()) !is GalleryItem.LocalOnly
+                val canShare = selection.isNotEmpty() &&
+                    selection.all { id -> adapter.findById(id) !is GalleryItem.LocalOnly }
                 shareItem.isEnabled = canShare
             }
             return true
@@ -417,13 +417,18 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private fun onShareLinkClicked() {
-        if (selection.size != 1) return
-        val item = adapter.findById(selection.first()) ?: return
-        if (item is GalleryItem.LocalOnly) {
+        if (selection.isEmpty()) return
+        val items = selection.mapNotNull { adapter.findById(it) }
+        val eligible = items.filter { it !is GalleryItem.LocalOnly }
+        if (eligible.isEmpty()) {
             Toast.makeText(this, R.string.share_link_local_only_warning, Toast.LENGTH_SHORT).show()
             return
         }
-        ShareLinkDialog.newInstance(item.id).show(supportFragmentManager, "share_link")
+        if (eligible.size == 1) {
+            ShareLinkDialog.newInstance(eligible.first().id).show(supportFragmentManager, "share_link")
+        } else {
+            ShareLinkDialog.newInstance(eligible.map { it.id }).show(supportFragmentManager, "share_link")
+        }
         actionMode?.finish()
     }
 

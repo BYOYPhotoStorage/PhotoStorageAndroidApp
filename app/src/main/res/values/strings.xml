@@ -116,6 +116,9 @@
     <string name="share_link_error_not_found">Photo no longer available.</string>
     <string name="share_link_error_generic">Could not create link. Try again later.</string>
     <string name="share_link_local_only_warning">This photo is not in the cloud yet.</string>
+    <string name="share_link_error_no_cloud_items">None of the selected items are in the cloud yet.</string>
+    <string name="share_gallery_created">Gallery link copied. %1$d items. Expires in %2$s.</string>
+    <string name="share_gallery_created_with_skip">Gallery link copied. %1$d items. Expires in %2$s. (%3$d not yet uploaded skipped)</string>
     <string name="share_links_active_title">Active share links</string>
     <string name="share_links_disclaimer">Links cannot be revoked once shared. They expire automatically. Use short durations for sensitive photos.</string>
     <string name="share_links_empty">No active links.</string>

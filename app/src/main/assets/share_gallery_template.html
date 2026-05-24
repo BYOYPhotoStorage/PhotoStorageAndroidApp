@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shared Gallery</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #0f0f0f;
+  color: #eee;
+  min-height: 100vh;
+}
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(15,15,15,0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #333;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.btn {
+  background: #1c7ed6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: #1971c2; }
+.btn:disabled { background: #333; color: #888; cursor: not-allowed; }
+.btn-secondary {
+  background: #333;
+  color: #eee;
+}
+.btn-secondary:hover { background: #444; }
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+}
+@media (min-width: 600px) {
+  .gallery { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 900px) {
+  .gallery { grid-template-columns: repeat(5, 1fr); }
+}
+.item {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+  background: #1a1a1a;
+}
+.item img, .item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+.item .play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.item .play-icon::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 12px solid #fff;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  margin-left: 3px;
+}
+.checkbox {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.7);
+  background: rgba(0,0,0,0.3);
+  cursor: pointer;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.checkbox.checked {
+  background: #1c7ed6;
+  border-color: #1c7ed6;
+}
+.checkbox.checked::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-bottom: 2px;
+}
+.item.selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid #1c7ed6;
+  pointer-events: none;
+  z-index: 1;
+}
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0,0,0,0.95);
+  display: none;
+  flex-direction: column;
+}
+.lightbox.active { display: flex; }
+.lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  gap: 12px;
+}
+.lightbox-header span {
+  font-size: 14px;
+  color: #aaa;
+}
+.lightbox-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightbox-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  overflow: hidden;
+}
+.lightbox-body img, .lightbox-body video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+.lightbox-nav.prev { left: 8px; }
+.lightbox-nav.next { right: 8px; }
+.lightbox-footer {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #888;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1 id="title">Shared Gallery</h1>
+  <div class="header-actions">
+    <button id="selectAllBtn" class="btn btn-secondary">Select all</button>
+    <button id="downloadBtn" class="btn" disabled>Download</button>
+  </div>
+</div>
+<div id="gallery" class="gallery"></div>
+<div id="empty" class="empty" style="display:none">No items to display.</div>
+
+<div id="lightbox" class="lightbox">
+  <div class="lightbox-header">
+    <span id="lightboxCounter"></span>
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+  </div>
+  <div class="lightbox-body" id="lightboxBody"></div>
+  <button class="lightbox-nav prev" onclick="navLightbox(-1)">&#10094;</button>
+  <button class="lightbox-nav next" onclick="navLightbox(1)">&#10095;</button>
+  <div class="lightbox-footer">
+    <button id="lightboxDownload" class="btn">Download</button>
+  </div>
+</div>
+
+<script>
+const GALLERY_DATA = {{GALLERY_DATA}};
+const items = GALLERY_DATA;
+let selected = new Set();
+let lightboxIndex = -1;
+
+const galleryEl = document.getElementById('gallery');
+const emptyEl = document.getElementById('empty');
+const titleEl = document.getElementById('title');
+const downloadBtn = document.getElementById('downloadBtn');
+const selectAllBtn = document.getElementById('selectAllBtn');
+const lightboxEl = document.getElementById('lightbox');
+const lightboxBody = document.getElementById('lightboxBody');
+const lightboxCounter = document.getElementById('lightboxCounter');
+const lightboxDownload = document.getElementById('lightboxDownload');
+
+function init() {
+  titleEl.textContent = items.length + ' item' + (items.length !== 1 ? 's' : '');
+  if (items.length === 0) {
+    emptyEl.style.display = 'block';
+    return;
+  }
+  items.forEach((item, idx) => {
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.dataset.index = idx;
+
+    const checkbox = document.createElement('div');
+    checkbox.className = 'checkbox';
+    checkbox.onclick = (e) => { e.stopPropagation(); toggleSelect(idx); };
+    el.appendChild(checkbox);
+
+    if (item.mediaType === 'video') {
+      const img = document.createElement('img');
+      img.src = item.thumbnailUrl;
+      img.alt = item.filename;
+      el.appendChild(img);
+      const play = document.createElement('div');
+      play.className = 'play-icon';
+      el.appendChild(play);
+    } else {
+      const img = document.createElement('img');
+      img.src = item.thumbnailUrl;
+      img.alt = item.filename;
+      el.appendChild(img);
+    }
+
+    el.onclick = () => openLightbox(idx);
+    galleryEl.appendChild(el);
+  });
+}
+
+function toggleSelect(idx) {
+  const el = galleryEl.children[idx];
+  const cb = el.querySelector('.checkbox');
+  if (selected.has(idx)) {
+    selected.delete(idx);
+    el.classList.remove('selected');
+    cb.classList.remove('checked');
+  } else {
+    selected.add(idx);
+    el.classList.add('selected');
+    cb.classList.add('checked');
+  }
+  updateButtons();
+}
+
+function updateButtons() {
+  downloadBtn.disabled = selected.size === 0;
+  downloadBtn.textContent = selected.size > 0 ? 'Download (' + selected.size + ')' : 'Download';
+  selectAllBtn.textContent = selected.size === items.length ? 'Deselect all' : 'Select all';
+}
+
+selectAllBtn.onclick = () => {
+  if (selected.size === items.length) {
+    selected.clear();
+    Array.from(galleryEl.children).forEach(el => {
+      el.classList.remove('selected');
+      el.querySelector('.checkbox').classList.remove('checked');
+    });
+  } else {
+    selected = new Set(items.map((_, i) => i));
+    Array.from(galleryEl.children).forEach(el => {
+      el.classList.add('selected');
+      el.querySelector('.checkbox').classList.add('checked');
+    });
+  }
+  updateButtons();
+};
+
+downloadBtn.onclick = () => downloadItems(Array.from(selected).map(i => items[i]));
+
+function openLightbox(idx) {
+  lightboxIndex = idx;
+  renderLightbox();
+  lightboxEl.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  lightboxEl.classList.remove('active');
+  document.body.style.overflow = '';
+  lightboxBody.innerHTML = '';
+  lightboxIndex = -1;
+}
+
+function renderLightbox() {
+  const item = items[lightboxIndex];
+  lightboxCounter.textContent = (lightboxIndex + 1) + ' / ' + items.length;
+  lightboxBody.innerHTML = '';
+  if (item.mediaType === 'video') {
+    const v = document.createElement('video');
+    v.src = item.fullUrl;
+    v.controls = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    lightboxBody.appendChild(v);
+  } else {
+    const img = document.createElement('img');
+    img.src = item.fullUrl;
+    img.alt = item.filename;
+    lightboxBody.appendChild(img);
+  }
+  lightboxDownload.onclick = () => downloadSingle(item);
+}
+
+function navLightbox(delta) {
+  const next = lightboxIndex + delta;
+  if (next >= 0 && next < items.length) {
+    lightboxIndex = next;
+    renderLightbox();
+  }
+}
+
+async function downloadSingle(item) {
+  try {
+    const res = await fetch(item.fullUrl);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = item.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    window.open(item.fullUrl, '_blank');
+  }
+}
+
+async function downloadItems(toDownload) {
+  for (const item of toDownload) {
+    await downloadSingle(item);
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!lightboxEl.classList.contains('active')) return;
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowLeft') navLightbox(-1);
+  if (e.key === 'ArrowRight') navLightbox(1);
+});
+
+init();
+</script>
+</body>
+</html>
