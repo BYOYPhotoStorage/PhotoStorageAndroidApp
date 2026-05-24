@@ -26,6 +26,11 @@ class InitialBackfillWorker(
         val photos = scanner.scanImages(since = null)
         photos.forEach { enqueueIfNew(it, dao) }
 
+        if (prefs.getVideosEnabled()) {
+            val videos = scanner.scanVideos(since = null)
+            videos.forEach { enqueueIfNew(it, dao) }
+        }
+
         prefs.setLastScanTimestamp(System.currentTimeMillis())
         Result.success()
     }

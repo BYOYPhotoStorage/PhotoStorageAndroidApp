@@ -7,5 +7,6 @@ data class MediaStorePhoto(
     val uri: Uri,
     val filename: String,
     val size: Long,
-    val dateTakenMs: Long
+    val dateTakenMs: Long,
+    val mediaType: String = "photo"
 )

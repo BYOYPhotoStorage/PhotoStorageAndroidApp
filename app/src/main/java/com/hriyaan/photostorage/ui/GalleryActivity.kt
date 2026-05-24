@@ -445,6 +445,9 @@ class GalleryActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                val isVideo = contentResolver.getType(item.mediaStoreUri)
+                    ?.startsWith("video/") == true
+
                 val rowId = withContext(Dispatchers.IO) {
                     val existing = uploadDao.findByFilenameAndSize(item.filename, item.sizeBytes)
                     if (existing != null) {
@@ -460,7 +463,8 @@ class GalleryActivity : AppCompatActivity() {
                                 photoB2Path = null,
                                 thumbnailB2Path = null,
                                 status = UploadDao.STATUS_UPLOADING,
-                                uploadedAt = null
+                                uploadedAt = null,
+                                mediaType = if (isVideo) UploadDao.MEDIA_TYPE_VIDEO else UploadDao.MEDIA_TYPE_PHOTO
                             )
                         )
                     }
@@ -469,34 +473,63 @@ class GalleryActivity : AppCompatActivity() {
 
                 val outcome = runCatching {
                     withContext(Dispatchers.IO) {
-                        val photoKey = S3KeyBuilder.photoKey(item.filename, item.dateTaken)
                         val thumbKey = S3KeyBuilder.thumbnailKey(item.filename, item.dateTaken)
 
                         val bytes = contentResolver.openInputStream(item.mediaStoreUri)?.use {
                             it.readBytes()
                         } ?: throw IOException("Could not open ${item.mediaStoreUri}")
 
-                        uploader.upload(
-                            key = photoKey,
-                            contentType = "image/jpeg",
-                            contentLength = bytes.size.toLong(),
-                            body = ByteStream.fromBytes(bytes)
-                        ).getOrThrow()
+                        if (isVideo) {
+                            val videoKey = S3KeyBuilder.videoKey(item.filename, item.dateTaken)
 
-                        val thumbBytes = thumbnailGen.createWebPThumbnail(item.mediaStoreUri)
-                        uploader.upload(
-                            key = thumbKey,
-                            contentType = "image/webp",
-                            contentLength = thumbBytes.size.toLong(),
-                            body = ByteStream.fromBytes(thumbBytes)
-                        ).getOrThrow()
+                            uploader.upload(
+                                key = videoKey,
+                                contentType = videoContentType(item.filename),
+                                contentLength = bytes.size.toLong(),
+                                body = ByteStream.fromBytes(bytes)
+                            ).getOrThrow()
 
-                        uploadDao.setUploadedPaths(
-                            id = rowId,
-                            photoPath = photoKey,
-                            thumbnailPath = thumbKey,
-                            uploadedAt = System.currentTimeMillis()
-                        )
+                            val thumbBytes = thumbnailGen.createWebPThumbnailFromVideo(item.mediaStoreUri)
+                            uploader.upload(
+                                key = thumbKey,
+                                contentType = "image/webp",
+                                contentLength = thumbBytes.size.toLong(),
+                                body = ByteStream.fromBytes(thumbBytes)
+                            ).getOrThrow()
+
+                            uploadDao.setUploadedVideoPaths(
+                                id = rowId,
+                                videoPath = videoKey,
+                                thumbnailPath = thumbKey,
+                                uploadedAt = System.currentTimeMillis(),
+                                compressed = false,
+                                originalPathB2 = null
+                            )
+                        } else {
+                            val photoKey = S3KeyBuilder.photoKey(item.filename, item.dateTaken)
+
+                            uploader.upload(
+                                key = photoKey,
+                                contentType = "image/jpeg",
+                                contentLength = bytes.size.toLong(),
+                                body = ByteStream.fromBytes(bytes)
+                            ).getOrThrow()
+
+                            val thumbBytes = thumbnailGen.createWebPThumbnail(item.mediaStoreUri)
+                            uploader.upload(
+                                key = thumbKey,
+                                contentType = "image/webp",
+                                contentLength = thumbBytes.size.toLong(),
+                                body = ByteStream.fromBytes(thumbBytes)
+                            ).getOrThrow()
+
+                            uploadDao.setUploadedPaths(
+                                id = rowId,
+                                photoPath = photoKey,
+                                thumbnailPath = thumbKey,
+                                uploadedAt = System.currentTimeMillis()
+                            )
+                        }
                     }
                 }
                 outcome.onFailure {
@@ -513,6 +546,18 @@ class GalleryActivity : AppCompatActivity() {
             } finally {
                 inFlight.remove(uriKey)
             }
+        }
+    }
+
+    private fun videoContentType(filename: String): String {
+        return when (filename.substringAfterLast('.', "").lowercase()) {
+            "mp4", "m4v" -> "video/mp4"
+            "mov" -> "video/quicktime"
+            "webm" -> "video/webm"
+            "3gp" -> "video/3gpp"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            else -> "video/mp4"
         }
     }
 
