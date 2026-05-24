@@ -21,16 +21,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
-import aws.smithy.kotlin.runtime.content.ByteStream
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
-import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
 import com.hriyaan.photostorage.data.PhotoPermission
 import com.hriyaan.photostorage.data.UploadDao
-import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.databinding.ActivityGalleryBinding
 import com.hriyaan.photostorage.gallery.DeletionEngine
 import com.hriyaan.photostorage.gallery.GalleryItem
@@ -39,7 +36,6 @@ import com.hriyaan.photostorage.gallery.MediaStoreDeleteLauncher
 import com.hriyaan.photostorage.recovery.IndexRecoveryActivity
 import com.hriyaan.photostorage.service.UploadForegroundService
 import com.hriyaan.photostorage.thumbnail.ThumbnailCacheFactory
-import com.hriyaan.photostorage.thumbnail.ThumbnailGen
 import com.hriyaan.photostorage.worker.IndexSyncScheduler
 import com.hriyaan.photostorage.worker.NightlyScanScheduler
 import kotlinx.coroutines.CompletableDeferred
@@ -49,7 +45,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 class GalleryActivity : AppCompatActivity() {
 
@@ -59,18 +54,15 @@ class GalleryActivity : AppCompatActivity() {
     private val uploadDao by lazy { app.uploadDatabase.dao }
     private val prefsStore by lazy { app.prefsStore }
     private val galleryRepository by lazy { app.galleryRepository }
-    private val thumbnailGen by lazy { ThumbnailGen(applicationContext) }
     private val app: PhotoBackupApp get() = application as PhotoBackupApp
 
     private var s3Uploader: S3Uploader? = null
     private var deletionEngine: DeletionEngine? = null
-    private var thumbnailCacheFactory: ThumbnailCacheFactory? = null
 
     private var currentMode: GalleryViewMode = GalleryViewMode.MERGED
     private var galleryJob: Job? = null
     private var statusRefreshJob: Job? = null
 
-    private val inFlight = mutableSetOf<String>()
     private val selection = linkedSetOf<String>()
     private var actionMode: ActionMode? = null
 
@@ -165,7 +157,6 @@ class GalleryActivity : AppCompatActivity() {
         s3Uploader = uploader
 
         val cacheFactory = ThumbnailCacheFactory(applicationContext, uploader, prefsStore)
-        thumbnailCacheFactory = cacheFactory
 
         deletionEngine = DeletionEngine(
             applicationContext,
@@ -362,9 +353,7 @@ class GalleryActivity : AppCompatActivity() {
             toggleSelection(item)
             return
         }
-        if (item is GalleryItem.LocalOnly && item.queuedRecord == null) {
-            uploadLocalNow(item)
-        }
+        startActivity(DetailActivity.intent(this, item.id, currentMode))
     }
 
     private fun onLongPress(item: GalleryItem) {
@@ -436,129 +425,6 @@ class GalleryActivity : AppCompatActivity() {
         }
         ShareLinkDialog.newInstance(item.id).show(supportFragmentManager, "share_link")
         actionMode?.finish()
-    }
-
-    private fun uploadLocalNow(item: GalleryItem.LocalOnly) {
-        val uploader = s3Uploader ?: return
-        val uriKey = item.mediaStoreUri.toString()
-        if (!inFlight.add(uriKey)) return
-
-        lifecycleScope.launch {
-            try {
-                val isVideo = contentResolver.getType(item.mediaStoreUri)
-                    ?.startsWith("video/") == true
-
-                val rowId = withContext(Dispatchers.IO) {
-                    val existing = uploadDao.findByFilenameAndSize(item.filename, item.sizeBytes)
-                    if (existing != null) {
-                        uploadDao.updateStatus(existing.id, UploadDao.STATUS_UPLOADING)
-                        existing.id
-                    } else {
-                        uploadDao.insert(
-                            UploadRecord(
-                                localUri = uriKey,
-                                filename = item.filename,
-                                size = item.sizeBytes,
-                                dateTaken = item.dateTaken,
-                                photoB2Path = null,
-                                thumbnailB2Path = null,
-                                status = UploadDao.STATUS_UPLOADING,
-                                uploadedAt = null,
-                                mediaType = if (isVideo) UploadDao.MEDIA_TYPE_VIDEO else UploadDao.MEDIA_TYPE_PHOTO
-                            )
-                        )
-                    }
-                }
-                galleryRepository.invalidate()
-
-                val outcome = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val thumbKey = S3KeyBuilder.thumbnailKey(item.filename, item.dateTaken)
-
-                        val bytes = contentResolver.openInputStream(item.mediaStoreUri)?.use {
-                            it.readBytes()
-                        } ?: throw IOException("Could not open ${item.mediaStoreUri}")
-
-                        if (isVideo) {
-                            val videoKey = S3KeyBuilder.videoKey(item.filename, item.dateTaken)
-
-                            uploader.upload(
-                                key = videoKey,
-                                contentType = videoContentType(item.filename),
-                                contentLength = bytes.size.toLong(),
-                                body = ByteStream.fromBytes(bytes)
-                            ).getOrThrow()
-
-                            val thumbBytes = thumbnailGen.createWebPThumbnailFromVideo(item.mediaStoreUri)
-                            uploader.upload(
-                                key = thumbKey,
-                                contentType = "image/webp",
-                                contentLength = thumbBytes.size.toLong(),
-                                body = ByteStream.fromBytes(thumbBytes)
-                            ).getOrThrow()
-
-                            uploadDao.setUploadedVideoPaths(
-                                id = rowId,
-                                videoPath = videoKey,
-                                thumbnailPath = thumbKey,
-                                uploadedAt = System.currentTimeMillis(),
-                                compressed = false,
-                                originalPathB2 = null
-                            )
-                        } else {
-                            val photoKey = S3KeyBuilder.photoKey(item.filename, item.dateTaken)
-
-                            uploader.upload(
-                                key = photoKey,
-                                contentType = "image/jpeg",
-                                contentLength = bytes.size.toLong(),
-                                body = ByteStream.fromBytes(bytes)
-                            ).getOrThrow()
-
-                            val thumbBytes = thumbnailGen.createWebPThumbnail(item.mediaStoreUri)
-                            uploader.upload(
-                                key = thumbKey,
-                                contentType = "image/webp",
-                                contentLength = thumbBytes.size.toLong(),
-                                body = ByteStream.fromBytes(thumbBytes)
-                            ).getOrThrow()
-
-                            uploadDao.setUploadedPaths(
-                                id = rowId,
-                                photoPath = photoKey,
-                                thumbnailPath = thumbKey,
-                                uploadedAt = System.currentTimeMillis()
-                            )
-                        }
-                    }
-                }
-                outcome.onFailure {
-                    withContext(Dispatchers.IO) {
-                        uploadDao.updateStatus(rowId, UploadDao.STATUS_FAILED)
-                    }
-                    Toast.makeText(
-                        this@GalleryActivity,
-                        R.string.upload_failed,
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-                galleryRepository.invalidate()
-            } finally {
-                inFlight.remove(uriKey)
-            }
-        }
-    }
-
-    private fun videoContentType(filename: String): String {
-        return when (filename.substringAfterLast('.', "").lowercase()) {
-            "mp4", "m4v" -> "video/mp4"
-            "mov" -> "video/quicktime"
-            "webm" -> "video/webm"
-            "3gp" -> "video/3gpp"
-            "mkv" -> "video/x-matroska"
-            "avi" -> "video/x-msvideo"
-            else -> "video/mp4"
-        }
     }
 
     companion object {

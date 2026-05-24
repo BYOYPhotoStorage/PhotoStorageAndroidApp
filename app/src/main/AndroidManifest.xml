@@ -76,6 +76,11 @@
             android:exported="false"
             android:theme="@style/Theme.PhotoBackup" />
 
+        <activity
+            android:name=".ui.DetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoBackup" />
+
         <service
             android:name=".service.UploadForegroundService"
             android:foregroundServiceType="dataSync"
