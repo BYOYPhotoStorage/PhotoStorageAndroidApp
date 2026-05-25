@@ -474,22 +474,10 @@ class GalleryActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             val queuedCount = withContext(Dispatchers.IO) {
-                val firstBackupSince = prefsStore.getFirstBackupSince()
-                val selectedBuckets = prefsStore.getSelectedBucketIds()
                 var count = 0
                 var resetCount = 0
                 var skippedCount = 0
-                var outOfScope = 0
-                var outOfFolder = 0
                 for (item in items) {
-                    if (firstBackupSince > 0 && item.dateTaken < firstBackupSince) {
-                        outOfScope++
-                        continue
-                    }
-                    if (selectedBuckets.isNotEmpty() && item.bucketId != null && item.bucketId !in selectedBuckets) {
-                        outOfFolder++
-                        continue
-                    }
                     val record = item.queuedRecord
                     when {
                         record == null -> {
@@ -527,7 +515,7 @@ class GalleryActivity : AppCompatActivity() {
                 if (count > 0 || resetCount > 0) {
                     galleryRepository.invalidate()
                 }
-                logger.i(TAG, "onUploadSelected done | inserted=$count reset=$resetCount skipped=$skippedCount outOfScope=$outOfScope outOfFolder=$outOfFolder")
+                logger.i(TAG, "onUploadSelected done | inserted=$count reset=$resetCount skipped=$skippedCount")
                 count + resetCount
             }
             if (queuedCount > 0) {

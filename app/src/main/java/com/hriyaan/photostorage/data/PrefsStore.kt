@@ -118,7 +118,11 @@ class PrefsStore(context: Context) {
             if (it == -1L) {
                 // Migrate from old string-based scope
                 val scope = prefs.getString(KEY_FIRST_BACKUP_SCOPE, null)
-                val since = if (scope == FIRST_BACKUP_SCOPE_ALL) 0L else System.currentTimeMillis()
+                val since = when (scope) {
+                    FIRST_BACKUP_SCOPE_ALL -> 0L
+                    FIRST_BACKUP_SCOPE_TODAY -> System.currentTimeMillis()
+                    else -> 0L // Default to all photos when never configured
+                }
                 setFirstBackupSince(since)
                 since
             } else {

@@ -1,0 +1,24 @@
+2026-05-25 15:43:22.009 [I] FileLogger: Diagnostics started
+2026-05-25 15:43:23.991 [D] GalleryRepository: loadAndCache start | mode=CLOUD
+2026-05-25 15:43:23.993 [D] GalleryRepository: loadCloud | records=0 items=0
+2026-05-25 15:43:23.994 [D] GalleryRepository: loadAndCache end | mode=CLOUD count=0
+2026-05-25 15:43:25.104 [D] GalleryRepository: loadAndCache start | mode=LOCAL
+2026-05-25 15:43:25.108 [D] GalleryRepository: queryAllMediaStorePhotos | bucketCount=7 buckets=-1572118126,-1739773001,1028075469,-1829889111,325974348,680114240,-2075821635
+2026-05-25 15:43:25.158 [D] GalleryRepository: queryAllMediaStorePhotos result | count=4640
+2026-05-25 15:43:25.167 [D] GalleryRepository: loadLocal | media=4640 items=4640
+2026-05-25 15:43:25.168 [D] GalleryRepository: loadAndCache end | mode=LOCAL count=4640
+2026-05-25 15:43:32.429 [I] GalleryActivity: onUploadSelected | items=5
+2026-05-25 15:43:32.431 [I] GalleryActivity: onUploadSelected done | inserted=0 reset=0 skipped=0 outOfScope=5 outOfFolder=0
+2026-05-25 15:43:36.019 [D] GalleryRepository: loadAndCache start | mode=CLOUD
+2026-05-25 15:43:36.022 [D] GalleryRepository: loadCloud | records=0 items=0
+2026-05-25 15:43:36.024 [D] GalleryRepository: loadAndCache end | mode=CLOUD count=0
+2026-05-25 15:43:37.131 [D] GalleryRepository: loadAndCache start | mode=LOCAL
+2026-05-25 15:43:37.136 [D] GalleryRepository: queryAllMediaStorePhotos | bucketCount=7 buckets=-1572118126,-1739773001,1028075469,-1829889111,325974348,680114240,-2075821635
+2026-05-25 15:43:37.182 [D] GalleryRepository: queryAllMediaStorePhotos result | count=4640
+2026-05-25 15:43:37.191 [D] GalleryRepository: loadLocal | media=4640 items=4640
+2026-05-25 15:43:37.192 [D] GalleryRepository: loadAndCache end | mode=LOCAL count=4640
+2026-05-25 15:43:55.468 [I] GalleryActivity: onUploadSelected | items=1
+2026-05-25 15:43:55.472 [I] GalleryActivity: onUploadSelected done | inserted=0 reset=0 skipped=0 outOfScope=1 outOfFolder=0
+2026-05-25 15:43:57.536 [I] GalleryActivity: onUploadSelected | items=1
+2026-05-25 15:43:57.544 [I] GalleryActivity: onUploadSelected done | inserted=0 reset=0 skipped=0 outOfScope=1 outOfFolder=0
+2026-05-25 15:44:00.498 [I] FileLogger: Diagnostics started
