@@ -13,6 +13,7 @@ import coil.fetch.SourceResult
 import coil.request.Options
 import okio.buffer
 import okio.source
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 
@@ -36,7 +37,7 @@ class VideoFrameFetcher(
         }
         if (!frame.isRecycled) frame.recycle()
         return SourceResult(
-            source = ImageSource(bytes.source().buffer(), context),
+            source = ImageSource(ByteArrayInputStream(bytes).source().buffer(), context),
             mimeType = "image/jpeg",
             dataSource = DataSource.DISK
         )

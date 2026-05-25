@@ -58,6 +58,7 @@ class ThumbnailCacheFactory(
                     .build()
             }
             .components {
+                add(VideoFrameFetcher.Factory(context))
                 add(B2ThumbnailFetcher.Factory(context, s3Uploader, egressRecorder))
             }
             .build()

@@ -112,9 +112,12 @@ class DetailAdapter(
                 setAnchorView(binding.videoView)
             }
             binding.videoView.setMediaController(mediaController)
+            binding.videoView.setOnPreparedListener {
+                binding.videoView.start()
+                mediaController?.show(0)
+            }
+            binding.videoView.requestFocus()
             binding.videoView.setVideoURI(uri)
-            binding.videoView.start()
-            mediaController?.show(0)
         }
 
         private fun resetVideoState() {

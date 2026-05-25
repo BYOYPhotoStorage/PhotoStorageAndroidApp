@@ -20,6 +20,7 @@ import com.hriyaan.photostorage.b2.S3Uploader
 import com.hriyaan.photostorage.databinding.ActivityDetailBinding
 import com.hriyaan.photostorage.gallery.GalleryViewMode
 import com.hriyaan.photostorage.thumbnail.B2ThumbnailFetcher
+import com.hriyaan.photostorage.thumbnail.VideoFrameFetcher
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -115,6 +116,7 @@ class DetailActivity : AppCompatActivity() {
                     .build()
             }
             .components {
+                add(VideoFrameFetcher.Factory(ctx))
                 add(B2ThumbnailFetcher.Factory(ctx, uploader, null))
             }
             .build()
