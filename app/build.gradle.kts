@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {
@@ -85,6 +87,9 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

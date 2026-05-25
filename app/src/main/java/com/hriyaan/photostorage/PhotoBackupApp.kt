@@ -1,6 +1,8 @@
 package com.hriyaan.photostorage
 
 import android.app.Application
+import com.google.firebase.FirebaseApp
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3Uploader
@@ -54,6 +56,9 @@ class PhotoBackupApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        FirebaseApp.initializeApp(this)
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
 
         prefsStore = PrefsStore(this)
         uploadDatabase = UploadDatabase(this)

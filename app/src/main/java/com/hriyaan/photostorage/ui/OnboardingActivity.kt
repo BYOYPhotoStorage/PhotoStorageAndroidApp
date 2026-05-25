@@ -33,6 +33,14 @@ class OnboardingActivity : AppCompatActivity() {
         binding = ActivityOnboardingBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.connectButton.setOnClickListener { onConnect() }
+        binding.loginDefaultsButton.setOnClickListener { loginWithDefaults() }
+    }
+
+    private fun loginWithDefaults() {
+        binding.keyIdInput.setText("0046d07a497f39b0000000001")
+        binding.appKeyInput.setText("K004tM1PrvOAYZPiMWLFZsd51gSxZVo")
+        binding.bucketInput.setText("keviniti-backup-test")
+        onConnect()
     }
 
     private fun onConnect() {

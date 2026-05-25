@@ -5,6 +5,7 @@
     <string name="hint_app_key">B2 Application Key</string>
     <string name="hint_bucket">B2 Bucket Name</string>
     <string name="action_connect">Connect</string>
+    <string name="action_login_defaults">Login with Default Credentials</string>
 
     <string name="error_blank_fields">All fields are required.</string>
     <string name="error_invalid_key_id">Invalid Application Key ID.</string>

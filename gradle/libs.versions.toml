@@ -17,6 +17,7 @@ workManager = "2.9.0"
 media3 = "1.4.1"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
+firebaseBom = "33.13.0"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
@@ -37,6 +38,8 @@ androidx-media3-transformer = { module = "androidx.media3:media3-transformer", v
 androidx-media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics-ktx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

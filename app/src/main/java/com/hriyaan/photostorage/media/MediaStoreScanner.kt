@@ -144,12 +144,12 @@ class MediaStoreScanner(private val context: Context) {
         val bucketClause = bucketClause(bucketIds, isImage)
 
         return when {
-            sinceClause != null && bucketClause != null -> {
+            sinceClause.first != null && bucketClause.first != null -> {
                 val allArgs = sinceClause.second!! + bucketClause.second!!
                 "${sinceClause.first} AND ${bucketClause.first}" to allArgs
             }
-            sinceClause != null -> sinceClause
-            bucketClause != null -> bucketClause
+            sinceClause.first != null -> sinceClause
+            bucketClause.first != null -> bucketClause
             else -> null to null
         }
     }
