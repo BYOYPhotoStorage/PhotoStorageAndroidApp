@@ -25,9 +25,11 @@ import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
+import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
 import com.hriyaan.photostorage.data.PhotoPermission
 import com.hriyaan.photostorage.data.UploadDao
+import com.hriyaan.photostorage.data.UploadRecord
 import com.hriyaan.photostorage.databinding.ActivityGalleryBinding
 import com.hriyaan.photostorage.gallery.DeletionEngine
 import com.hriyaan.photostorage.gallery.GalleryItem
@@ -113,11 +115,29 @@ class GalleryActivity : AppCompatActivity() {
                     selection.all { id -> adapter.findById(id) !is GalleryItem.LocalOnly }
                 shareItem.isEnabled = canShare
             }
+            val uploadItem = menu.findItem(R.id.action_upload)
+            if (uploadItem != null) {
+                val canUpload = selection.any { id ->
+                    val item = adapter.findById(id)
+                    item is GalleryItem.LocalOnly &&
+                        (item.queuedRecord == null ||
+                            item.queuedRecord.status !in setOf(
+                                UploadDao.STATUS_PENDING,
+                                UploadDao.STATUS_UPLOADING,
+                                UploadDao.STATUS_UPLOADED
+                            ))
+                }
+                uploadItem.isEnabled = canUpload
+            }
             return true
         }
 
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
             return when (item.itemId) {
+                R.id.action_upload -> {
+                    onUploadSelected()
+                    true
+                }
                 R.id.action_share_link -> {
                     onShareLinkClicked()
                     true
@@ -430,6 +450,68 @@ class GalleryActivity : AppCompatActivity() {
             ShareLinkDialog.newInstance(eligible.map { it.id }).show(supportFragmentManager, "share_link")
         }
         actionMode?.finish()
+    }
+
+    private fun onUploadSelected() {
+        val items = selection.mapNotNull { adapter.findById(it) }
+            .filterIsInstance<GalleryItem.LocalOnly>()
+        if (items.isEmpty()) {
+            actionMode?.finish()
+            return
+        }
+        lifecycleScope.launch {
+            val queuedCount = withContext(Dispatchers.IO) {
+                var count = 0
+                for (item in items) {
+                    val record = item.queuedRecord
+                    when {
+                        record == null -> {
+                            val photoPath = if (item.mediaType == UploadDao.MEDIA_TYPE_VIDEO) {
+                                S3KeyBuilder.videoKey(item.filename, item.dateTaken)
+                            } else {
+                                S3KeyBuilder.photoKey(item.filename, item.dateTaken)
+                            }
+                            val thumbPath = S3KeyBuilder.thumbnailKey(item.filename, item.dateTaken)
+                            uploadDao.insert(
+                                UploadRecord(
+                                    localUri = item.mediaStoreUri.toString(),
+                                    filename = item.filename,
+                                    size = item.sizeBytes,
+                                    dateTaken = item.dateTaken,
+                                    photoB2Path = photoPath,
+                                    thumbnailB2Path = thumbPath,
+                                    status = UploadDao.STATUS_PENDING,
+                                    uploadedAt = null,
+                                    mediaType = item.mediaType
+                                )
+                            )
+                            count++
+                        }
+                        record.status == UploadDao.STATUS_FAILED ||
+                            record.status == UploadDao.STATUS_PERMANENTLY_FAILED -> {
+                            uploadDao.updateStatus(record.id, UploadDao.STATUS_PENDING)
+                            uploadDao.updateRetry(record.id, 0, null)
+                            count++
+                        }
+                        else -> {}
+                    }
+                }
+                if (count > 0) {
+                    galleryRepository.invalidate()
+                }
+                count
+            }
+            if (queuedCount > 0) {
+                Toast.makeText(
+                    this@GalleryActivity,
+                    getString(R.string.upload_queued, queuedCount),
+                    Toast.LENGTH_SHORT
+                ).show()
+                UploadForegroundService.processQueueNow(this@GalleryActivity)
+                updateStatusText()
+            }
+            actionMode?.finish()
+        }
     }
 
     companion object {

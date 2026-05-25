@@ -66,7 +66,8 @@ class GalleryRepository(
                 thumbnailSource = ThumbnailSource.LocalUri(photo.uri),
                 mediaStoreUri = photo.uri,
                 sizeBytes = photo.size,
-                queuedRecord = queued
+                queuedRecord = queued,
+                mediaType = photo.mediaType
             )
         }
     }

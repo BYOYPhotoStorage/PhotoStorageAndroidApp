@@ -3,5 +3,19 @@
     "allow": [
       "Write"
     ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hook-trigger.sh",
+            "async": true,
+            "statusMessage": "Checking for deploy trigger..."
+          }
+        ]
+      }
+    ]
   }
 }

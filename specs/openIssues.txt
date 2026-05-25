@@ -1,0 +1,11 @@
+Can we have some log file that can be generated and added to the app and then later on we can sync the logs to backblaze for analysis.
+
+I am not able to see the videos getting uploaded.
+
+I need a way to see the expanded view of the photos.
+
+Once we are in settings then there is no way to go back.
+
+Have a setting for us to choose which folders the user want to backup. 
+eg: The user might not want to backup the whatsapp folder and might want to backup only the camera roll.
+

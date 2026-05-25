@@ -1,7 +1,10 @@
 package com.hriyaan.photostorage.ui
 
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.MediaController
+import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -15,8 +18,7 @@ import com.hriyaan.photostorage.gallery.GalleryItem
 import com.hriyaan.photostorage.gallery.ThumbnailSource
 
 class DetailAdapter(
-    private val imageLoader: ImageLoader,
-    private val onPlayVideo: (GalleryItem) -> Unit
+    private val imageLoader: ImageLoader
 ) : ListAdapter<GalleryItem, DetailAdapter.VH>(DIFF) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -32,10 +34,32 @@ class DetailAdapter(
         holder.bind(getItem(position))
     }
 
+    override fun onViewRecycled(holder: VH) {
+        holder.release()
+        super.onViewRecycled(holder)
+    }
+
     inner class VH(private val binding: ItemDetailPageBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
+        private var mediaController: MediaController? = null
+        private var currentItem: GalleryItem? = null
+
+        init {
+            binding.videoView.setOnCompletionListener {
+                resetVideoState()
+            }
+            binding.videoView.setOnErrorListener { _, _, _ ->
+                Toast.makeText(binding.root.context, R.string.video_playback_error, Toast.LENGTH_SHORT).show()
+                resetVideoState()
+                true
+            }
+        }
+
         fun bind(item: GalleryItem) {
+            currentItem = item
+            release()
+
             val context = binding.root.context
             val isVideo = isVideo(item)
 
@@ -60,12 +84,59 @@ class DetailAdapter(
                 .build()
             imageLoader.enqueue(request)
 
+            binding.photoView.isVisible = true
+            binding.videoView.isVisible = false
             binding.videoPlayButton.isVisible = isVideo
+
             if (isVideo) {
-                binding.videoPlayButton.setOnClickListener { onPlayVideo(item) }
+                val uri = videoUri(item)
+                if (uri != null) {
+                    binding.videoPlayButton.setOnClickListener { startVideo(uri) }
+                } else {
+                    binding.videoPlayButton.setOnClickListener {
+                        Toast.makeText(context, R.string.video_cloud_playback, Toast.LENGTH_SHORT).show()
+                    }
+                }
             } else {
                 binding.videoPlayButton.setOnClickListener(null)
             }
+        }
+
+        private fun startVideo(uri: Uri) {
+            binding.videoPlayButton.isVisible = false
+            binding.photoView.isVisible = false
+            binding.videoView.isVisible = true
+
+            val ctx = binding.root.context
+            mediaController = MediaController(ctx).apply {
+                setAnchorView(binding.videoView)
+            }
+            binding.videoView.setMediaController(mediaController)
+            binding.videoView.setVideoURI(uri)
+            binding.videoView.start()
+            mediaController?.show(0)
+        }
+
+        private fun resetVideoState() {
+            binding.videoView.stopPlayback()
+            binding.videoView.setMediaController(null)
+            mediaController = null
+            binding.videoView.isVisible = false
+            binding.photoView.isVisible = true
+            val isVideo = currentItem?.let { isVideo(it) } ?: false
+            binding.videoPlayButton.isVisible = isVideo
+        }
+
+        fun release() {
+            binding.videoView.stopPlayback()
+            binding.videoView.setMediaController(null)
+            mediaController = null
+        }
+
+        private fun videoUri(item: GalleryItem): Uri? = when (item) {
+            is GalleryItem.LocalOnly -> item.mediaStoreUri
+            is GalleryItem.Synced -> item.mediaStoreUri
+            is GalleryItem.CloudOnly -> null
         }
 
         private fun isVideo(item: GalleryItem): Boolean = when (item) {

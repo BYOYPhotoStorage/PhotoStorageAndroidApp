@@ -109,9 +109,18 @@ class UploadForegroundService : Service() {
         )
         if (prefsStore.getVideosEnabled()) registerVideoObserver()
         prefsStore.registerOnChangedListener(prefsListener)
+
+        if (prefsStore.getLastScanTimestamp() == 0L) {
+            scope.launch(Dispatchers.IO) {
+                handleMediaChange()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_PROCESS_QUEUE) {
+            triggerWorker()
+        }
         return START_STICKY
     }
 
@@ -231,8 +240,17 @@ class UploadForegroundService : Service() {
             )
         }
 
+        fun processQueueNow(context: Context) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, UploadForegroundService::class.java).setAction(ACTION_PROCESS_QUEUE)
+            )
+        }
+
         fun stop(context: Context) {
             context.stopService(Intent(context, UploadForegroundService::class.java))
         }
+
+        private const val ACTION_PROCESS_QUEUE = "com.hriyaan.photostorage.action.PROCESS_QUEUE"
     }
 }

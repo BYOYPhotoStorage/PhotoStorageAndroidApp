@@ -104,6 +104,8 @@
     <string name="cost_footnote">B2 pricing as of %1$s. These numbers are estimates.</string>
 
     <string name="action_share_link">Share link</string>
+    <string name="action_upload">Upload</string>
+    <string name="upload_queued">%1$d item(s) queued for upload</string>
     <string name="share_link_title">Share link</string>
     <string name="share_link_body">Anyone with this link can view the photo until it expires.</string>
     <string name="share_ttl_1h">1 hour</string>
@@ -225,6 +227,7 @@
     <string name="back">Back</string>
     <string name="detail_counter">%1$d / %2$d</string>
     <string name="video_cloud_playback">Cloud video playback not yet supported</string>
+    <string name="video_playback_error">Unable to play video</string>
 
     <plurals name="folder_items_count">
         <item quantity="one">%1$d item</item>

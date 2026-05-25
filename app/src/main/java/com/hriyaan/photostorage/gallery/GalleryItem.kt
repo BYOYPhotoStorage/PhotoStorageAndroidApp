@@ -1,6 +1,7 @@
 package com.hriyaan.photostorage.gallery
 
 import android.net.Uri
+import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
 
 sealed class GalleryItem {
@@ -16,7 +17,8 @@ sealed class GalleryItem {
         override val thumbnailSource: ThumbnailSource,
         val mediaStoreUri: Uri,
         val sizeBytes: Long,
-        val queuedRecord: UploadRecord?
+        val queuedRecord: UploadRecord?,
+        val mediaType: String = UploadDao.MEDIA_TYPE_PHOTO
     ) : GalleryItem()
 
     data class CloudOnly(

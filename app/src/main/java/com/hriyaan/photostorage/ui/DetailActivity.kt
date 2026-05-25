@@ -2,32 +2,23 @@ package com.hriyaan.photostorage.ui
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.widget.ImageView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import coil.request.ImageRequest
 import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3Uploader
-import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.databinding.ActivityDetailBinding
-import com.hriyaan.photostorage.gallery.GalleryItem
 import com.hriyaan.photostorage.gallery.GalleryViewMode
-import com.hriyaan.photostorage.gallery.ThumbnailSource
 import com.hriyaan.photostorage.thumbnail.B2ThumbnailFetcher
 import kotlinx.coroutines.launch
 import java.io.File
@@ -69,7 +60,7 @@ class DetailActivity : AppCompatActivity() {
 
         val imageLoader = buildImageLoader(uploader)
 
-        adapter = DetailAdapter(imageLoader, ::onPlayVideo)
+        adapter = DetailAdapter(imageLoader)
         binding.viewPager.adapter = adapter
         binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -106,25 +97,6 @@ class DetailActivity : AppCompatActivity() {
         } else {
             binding.counterText.isVisible = false
         }
-    }
-
-    private fun onPlayVideo(item: GalleryItem) {
-        val uri = when (item) {
-            is GalleryItem.LocalOnly -> item.mediaStoreUri
-            is GalleryItem.Synced -> item.mediaStoreUri
-            is GalleryItem.CloudOnly -> {
-                val path = item.uploadRecord.photoB2Path
-                if (path != null) {
-                    Toast.makeText(this, R.string.video_cloud_playback, Toast.LENGTH_SHORT).show()
-                }
-                return
-            }
-        }
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/*")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-        startActivity(intent)
     }
 
     private fun buildImageLoader(uploader: S3Uploader): ImageLoader {
