@@ -150,10 +150,12 @@ class UploadForegroundService : Service() {
 
     override fun onDestroy() {
         FileLogger.getInstance(this).i(TAG, "onDestroy | unregistering observers")
-        contentResolver.unregisterContentObserver(imageObserver)
-        unregisterVideoObserver()
-        prefsStore.unregisterOnChangedListener(prefsListener)
-        handler.removeCallbacksAndMessages(null)
+        if (::prefsStore.isInitialized) {
+            contentResolver.unregisterContentObserver(imageObserver)
+            unregisterVideoObserver()
+            prefsStore.unregisterOnChangedListener(prefsListener)
+            handler.removeCallbacksAndMessages(null)
+        }
         scope.cancel()
         super.onDestroy()
     }
