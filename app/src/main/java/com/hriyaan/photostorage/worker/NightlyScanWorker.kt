@@ -8,6 +8,7 @@ import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.MediaStorePhoto
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
@@ -25,17 +26,29 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
         val prefsStore = app.prefsStore
         val scanner = MediaStoreScanner(applicationContext)
         val duplicateDetector = DuplicateDetector(applicationContext, uploadDao)
+        val logger = FileLogger.getInstance(applicationContext)
 
         val selectedBuckets = prefsStore.getSelectedBucketIds()
         val sinceFromInput = inputData.getLong(KEY_SINCE, -1L).takeIf { it >= 0L }
         val sinceArg = (sinceFromInput ?: prefsStore.getLastScanTimestamp()).takeIf { it > 0L }
+        val firstBackupSince = prefsStore.getFirstBackupSince()
+        logger.i(TAG, "doWork start | since=$sinceArg bucketCount=${selectedBuckets.size} firstBackupSince=$firstBackupSince")
+
         val items = scanner.scanImages(sinceArg, bucketIds = selectedBuckets) +
             scanner.scanVideos(sinceArg, bucketIds = selectedBuckets)
+        logger.i(TAG, "scan complete | items=${items.size}")
 
         var enqueuedCount = 0
+        var duplicateCount = 0
+        var outOfScope = 0
         for (item in items) {
+            if (firstBackupSince > 0 && item.dateTaken < firstBackupSince) {
+                outOfScope++
+                continue
+            }
             val dupResult = duplicateDetector.isDuplicate(item.toMediaStorePhoto())
             if (dupResult is com.hriyaan.photostorage.dedup.DuplicateResult.Duplicate) {
+                duplicateCount++
                 continue
             }
 
@@ -52,13 +65,15 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
                     thumbnailB2Path = thumbPath,
                     status = UploadDao.STATUS_PENDING,
                     uploadedAt = null,
-                    mediaType = item.mediaType.toDbValue()
+                    mediaType = item.mediaType.toDbValue(),
+                    bucketId = item.bucketId
                 )
             )
             enqueuedCount++
         }
 
         prefsStore.setLastScanTimestamp(System.currentTimeMillis())
+        logger.i(TAG, "enqueue complete | enqueued=$enqueuedCount duplicates=$duplicateCount outOfScope=$outOfScope")
 
         if (enqueuedCount > 0) {
             val creds = prefsStore.getCredentials()
@@ -73,10 +88,14 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
                     ThumbnailGen(applicationContext),
                     UploadNotificationManager(applicationContext)
                 )
+                logger.i(TAG, "triggering processQueue | enqueued=$enqueuedCount")
                 worker.processQueue()
+            } else {
+                logger.w(TAG, "doWork: no credentials, skipping processQueue")
             }
         }
 
+        logger.i(TAG, "doWork success")
         return Result.success()
     }
 
@@ -89,6 +108,7 @@ class NightlyScanWorker(context: Context, params: WorkerParameters) : CoroutineW
     )
 
     companion object {
+        private const val TAG = "NightlyScanWorker"
         const val KEY_SINCE = "since"
     }
 }

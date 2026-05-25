@@ -27,6 +27,7 @@ import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.PhotoPermission
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
@@ -200,6 +201,16 @@ class GalleryActivity : AppCompatActivity() {
             } else {
                 UploadForegroundService.stop(this)
                 NightlyScanScheduler.cancel(this)
+                lifecycleScope.launch {
+                    val cleared = withContext(Dispatchers.IO) {
+                        uploadDao.clearPendingQueue()
+                    }
+                    if (cleared > 0) {
+                        galleryRepository.invalidate()
+                        FileLogger.getInstance(this@GalleryActivity).i(TAG, "autoUpload OFF | cleared $cleared pending items")
+                    }
+                    updateStatusText()
+                }
             }
             updateStatusText()
         }
@@ -453,16 +464,32 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private fun onUploadSelected() {
+        val logger = FileLogger.getInstance(this)
         val items = selection.mapNotNull { adapter.findById(it) }
             .filterIsInstance<GalleryItem.LocalOnly>()
+        logger.i(TAG, "onUploadSelected | items=${items.size}")
         if (items.isEmpty()) {
             actionMode?.finish()
             return
         }
         lifecycleScope.launch {
             val queuedCount = withContext(Dispatchers.IO) {
+                val firstBackupSince = prefsStore.getFirstBackupSince()
+                val selectedBuckets = prefsStore.getSelectedBucketIds()
                 var count = 0
+                var resetCount = 0
+                var skippedCount = 0
+                var outOfScope = 0
+                var outOfFolder = 0
                 for (item in items) {
+                    if (firstBackupSince > 0 && item.dateTaken < firstBackupSince) {
+                        outOfScope++
+                        continue
+                    }
+                    if (selectedBuckets.isNotEmpty() && item.bucketId != null && item.bucketId !in selectedBuckets) {
+                        outOfFolder++
+                        continue
+                    }
                     val record = item.queuedRecord
                     when {
                         record == null -> {
@@ -482,7 +509,8 @@ class GalleryActivity : AppCompatActivity() {
                                     thumbnailB2Path = thumbPath,
                                     status = UploadDao.STATUS_PENDING,
                                     uploadedAt = null,
-                                    mediaType = item.mediaType
+                                    mediaType = item.mediaType,
+                                    bucketId = item.bucketId
                                 )
                             )
                             count++
@@ -491,15 +519,16 @@ class GalleryActivity : AppCompatActivity() {
                             record.status == UploadDao.STATUS_PERMANENTLY_FAILED -> {
                             uploadDao.updateStatus(record.id, UploadDao.STATUS_PENDING)
                             uploadDao.updateRetry(record.id, 0, null)
-                            count++
+                            resetCount++
                         }
-                        else -> {}
+                        else -> skippedCount++
                     }
                 }
-                if (count > 0) {
+                if (count > 0 || resetCount > 0) {
                     galleryRepository.invalidate()
                 }
-                count
+                logger.i(TAG, "onUploadSelected done | inserted=$count reset=$resetCount skipped=$skippedCount outOfScope=$outOfScope outOfFolder=$outOfFolder")
+                count + resetCount
             }
             if (queuedCount > 0) {
                 Toast.makeText(
@@ -515,6 +544,7 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "GalleryActivity"
         private const val STATUS_REFRESH_INTERVAL_MS = 5000L
     }
 }

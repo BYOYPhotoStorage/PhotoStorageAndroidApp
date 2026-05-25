@@ -3,6 +3,7 @@ package com.hriyaan.photostorage.gallery
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.MediaStorePhoto
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.data.UploadDao
@@ -44,19 +45,23 @@ class GalleryRepository(
     }
 
     private fun loadAndCache(mode: GalleryViewMode): List<GalleryItem> {
+        val logger = FileLogger.getInstance(context)
+        logger.d(TAG, "loadAndCache start | mode=$mode")
         val items = when (mode) {
             GalleryViewMode.LOCAL -> loadLocal()
             GalleryViewMode.CLOUD -> loadCloud()
             GalleryViewMode.MERGED -> loadMerged()
         }
         synchronized(cacheLock) { cache[mode] = items }
+        logger.d(TAG, "loadAndCache end | mode=$mode count=${items.size}")
         return items
     }
 
     private fun loadLocal(): List<GalleryItem> {
+        val logger = FileLogger.getInstance(context)
         val mediaPhotos = queryAllMediaStorePhotos()
         val recordsByNatKey = uploadDao.getAll().associateBy { it.filename to it.size }
-        return mediaPhotos.map { photo ->
+        val items = mediaPhotos.map { photo ->
             val record = recordsByNatKey[photo.filename to photo.size]
             val queued = if (record != null && record.status in QUEUE_STATUSES) record else null
             GalleryItem.LocalOnly(
@@ -67,12 +72,16 @@ class GalleryRepository(
                 mediaStoreUri = photo.uri,
                 sizeBytes = photo.size,
                 queuedRecord = queued,
-                mediaType = photo.mediaType
+                mediaType = photo.mediaType,
+                bucketId = photo.bucketId
             )
         }
+        logger.d(TAG, "loadLocal | media=${mediaPhotos.size} items=${items.size}")
+        return items
     }
 
     private fun loadCloud(): List<GalleryItem> {
+        val logger = FileLogger.getInstance(context)
         val records = uploadDao.getCloudView()
         val mediaByNatKey: Map<Pair<String, Long>, MediaStorePhoto> =
             if (records.any { it.localPresent }) {
@@ -80,7 +89,7 @@ class GalleryRepository(
             } else {
                 emptyMap()
             }
-        return records.map { record ->
+        val items = records.map { record ->
             val matchingMedia = if (record.localPresent) {
                 mediaByNatKey[record.filename to record.size]
             } else {
@@ -99,10 +108,13 @@ class GalleryRepository(
                 uploadRecord = record
             )
         }
+        logger.d(TAG, "loadCloud | records=${records.size} items=${items.size}")
+        return items
     }
 
     private fun loadMerged(): List<GalleryItem> {
-        val latestUploadedAt = uploadDao.getLatestUploadedAt() ?: 0L
+        val logger = FileLogger.getInstance(context)
+        val firstBackupSince = prefsStore.getFirstBackupSince()
         val uploaded = uploadDao.getCloudView()
         val allRecords = uploadDao.getAll()
         val mediaAll = queryAllMediaStorePhotos()
@@ -113,6 +125,9 @@ class GalleryRepository(
 
         val claimedMediaUris = mutableSetOf<String>()
         val items = mutableListOf<GalleryItem>()
+        var syncedCount = 0
+        var cloudOnlyCount = 0
+        var localOnlyCount = 0
 
         for (record in uploaded) {
             val match: MediaStorePhoto? = mediaByUriStr[record.localUri]
@@ -129,6 +144,7 @@ class GalleryRepository(
                         mediaStoreUri = match.uri,
                         uploadRecord = record
                     )
+                    syncedCount++
                 }
                 match != null -> {
                     claimedMediaUris += match.uri.toString()
@@ -139,6 +155,7 @@ class GalleryRepository(
                         thumbnailSource = ThumbnailSource.LocalUri(match.uri),
                         uploadRecord = record
                     )
+                    cloudOnlyCount++
                 }
                 else -> {
                     items += GalleryItem.CloudOnly(
@@ -148,12 +165,13 @@ class GalleryRepository(
                         thumbnailSource = ThumbnailSource.B2Path(record.thumbnailB2Path.orEmpty()),
                         uploadRecord = record
                     )
+                    cloudOnlyCount++
                 }
             }
         }
 
         for (photo in mediaAll) {
-            if (photo.dateTakenMs <= latestUploadedAt) continue
+            if (firstBackupSince > 0 && photo.dateTakenMs < firstBackupSince) continue
             if (photo.uri.toString() in claimedMediaUris) continue
             val record = recordsByNatKey[photo.filename to photo.size]
             val queued: UploadRecord? = if (record != null && record.status in QUEUE_STATUSES) record else null
@@ -164,16 +182,21 @@ class GalleryRepository(
                 thumbnailSource = ThumbnailSource.LocalUri(photo.uri),
                 mediaStoreUri = photo.uri,
                 sizeBytes = photo.size,
-                queuedRecord = queued
+                queuedRecord = queued,
+                bucketId = photo.bucketId
             )
+            localOnlyCount++
         }
 
+        logger.d(TAG, "loadMerged | uploaded=${uploaded.size} media=${mediaAll.size} synced=$syncedCount cloudOnly=$cloudOnlyCount localOnly=$localOnlyCount firstBackupSince=$firstBackupSince")
         return items.sortedByDescending { it.dateTaken }
     }
 
     private fun queryAllMediaStorePhotos(): List<MediaStorePhoto> {
+        val logger = FileLogger.getInstance(context)
         val out = ArrayList<MediaStorePhoto>()
         val selectedBuckets = prefsStore.getSelectedBucketIds()
+        logger.d(TAG, "queryAllMediaStorePhotos | bucketCount=${selectedBuckets.size} buckets=${selectedBuckets.joinToString(",") ?: "all"}")
 
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
@@ -269,7 +292,9 @@ class GalleryRepository(
             }
         }
 
-        return out.sortedByDescending { it.dateTakenMs }
+        val result = out.sortedByDescending { it.dateTakenMs }
+        logger.d(TAG, "queryAllMediaStorePhotos result | count=${result.size}")
+        return result
     }
 
     private fun bucketSelection(bucketIds: Set<String>?, isImage: Boolean): Pair<String?, Array<String>?> {
@@ -280,6 +305,7 @@ class GalleryRepository(
     }
 
     companion object {
+        private const val TAG = "GalleryRepository"
         private val QUEUE_STATUSES = setOf(
             UploadDao.STATUS_PENDING,
             UploadDao.STATUS_UPLOADING,

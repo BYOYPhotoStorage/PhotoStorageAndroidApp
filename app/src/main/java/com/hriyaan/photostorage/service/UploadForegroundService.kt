@@ -15,6 +15,7 @@ import com.hriyaan.photostorage.b2.S3ClientFactory
 import com.hriyaan.photostorage.b2.S3Config
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.MediaStorePhoto
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
@@ -73,6 +74,14 @@ class UploadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        val logger = FileLogger.getInstance(this)
+
+        val tempPrefs = (application as PhotoBackupApp).prefsStore
+        if (!tempPrefs.isAutoUploadEnabled()) {
+            logger.i(TAG, "onCreate: autoUpload disabled, stopping self")
+            stopSelf()
+            return
+        }
 
         val app = application as PhotoBackupApp
         uploadDao = app.uploadDatabase.dao
@@ -81,6 +90,11 @@ class UploadForegroundService : Service() {
         duplicateDetector = DuplicateDetector(this, uploadDao)
         galleryRepository = app.galleryRepository
         scanner = MediaStoreScanner(this)
+
+        val autoUpload = prefsStore.isAutoUploadEnabled()
+        val lastScan = prefsStore.getLastScanTimestamp()
+        val pendingCount = uploadDao.getPendingQueue().size
+        logger.i(TAG, "onCreate | autoUpload=$autoUpload lastScan=$lastScan pending=$pendingCount")
 
         val creds = prefsStore.getCredentials()
         if (creds != null) {
@@ -94,11 +108,13 @@ class UploadForegroundService : Service() {
                 ThumbnailGen(this),
                 notificationManager
             )
+            logger.i(TAG, "uploadWorker initialized | bucket=${creds.bucketName}")
+        } else {
+            logger.w(TAG, "onCreate: no credentials, uploadWorker not initialized")
         }
 
         notificationManager.ensureChannels()
 
-        val pendingCount = uploadDao.getPendingQueue().size
         val notification = notificationManager.buildForegroundNotification(pendingCount)
         startForeground(UploadNotificationManager.ID_FOREGROUND, notification)
 
@@ -107,10 +123,15 @@ class UploadForegroundService : Service() {
             true,
             imageObserver
         )
-        if (prefsStore.getVideosEnabled()) registerVideoObserver()
+        logger.i(TAG, "imageObserver registered")
+        if (prefsStore.getVideosEnabled()) {
+            registerVideoObserver()
+            logger.i(TAG, "videoObserver registered")
+        }
         prefsStore.registerOnChangedListener(prefsListener)
 
-        if (prefsStore.getLastScanTimestamp() == 0L) {
+        if (lastScan == 0L) {
+            logger.i(TAG, "lastScan is 0, running full handleMediaChange")
             scope.launch(Dispatchers.IO) {
                 handleMediaChange()
             }
@@ -118,13 +139,17 @@ class UploadForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_PROCESS_QUEUE) {
+        val logger = FileLogger.getInstance(this)
+        val action = intent?.action
+        logger.i(TAG, "onStartCommand | action=$action startId=$startId")
+        if (action == ACTION_PROCESS_QUEUE) {
             triggerWorker()
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        FileLogger.getInstance(this).i(TAG, "onDestroy | unregistering observers")
         contentResolver.unregisterContentObserver(imageObserver)
         unregisterVideoObserver()
         prefsStore.unregisterOnChangedListener(prefsListener)
@@ -156,21 +181,35 @@ class UploadForegroundService : Service() {
     }
 
     private fun scheduleDebouncedScan() {
+        FileLogger.getInstance(this).d(TAG, "scheduleDebouncedScan | debounce=${DEBOUNCE_MS}ms")
         handler.removeCallbacks(debounceRunnable)
         handler.postDelayed(debounceRunnable, DEBOUNCE_MS)
     }
 
     private suspend fun handleMediaChange() {
+        val logger = FileLogger.getInstance(this)
         val lastScan = prefsStore.getLastScanTimestamp()
         val sinceArg = lastScan.takeIf { it > 0L }
         val selectedBuckets = prefsStore.getSelectedBucketIds()
+        val firstBackupSince = prefsStore.getFirstBackupSince()
+        logger.i(TAG, "handleMediaChange start | lastScan=$lastScan sinceArg=$sinceArg bucketCount=${selectedBuckets.size} firstBackupSince=$firstBackupSince")
+
         val items = scanner.scanImages(sinceArg, bucketIds = selectedBuckets) +
             scanner.scanVideos(sinceArg, bucketIds = selectedBuckets)
+        logger.i(TAG, "scan complete | items=${items.size}")
 
         var newestTimestamp = lastScan
+        var enqueued = 0
+        var duplicates = 0
+        var outOfScope = 0
         for (item in items) {
+            if (firstBackupSince > 0 && item.dateTaken < firstBackupSince) {
+                outOfScope++
+                continue
+            }
             val dupResult = duplicateDetector.isDuplicate(item.toMediaStorePhoto())
             if (dupResult is com.hriyaan.photostorage.dedup.DuplicateResult.Duplicate) {
+                duplicates++
                 continue
             }
 
@@ -187,9 +226,11 @@ class UploadForegroundService : Service() {
                     thumbnailB2Path = thumbPath,
                     status = UploadDao.STATUS_PENDING,
                     uploadedAt = null,
-                    mediaType = item.mediaType.toDbValue()
+                    mediaType = item.mediaType.toDbValue(),
+                    bucketId = item.bucketId
                 )
             )
+            enqueued++
 
             if (item.dateTaken > newestTimestamp) {
                 newestTimestamp = item.dateTaken
@@ -202,6 +243,7 @@ class UploadForegroundService : Service() {
             prefsStore.setLastScanTimestamp(newestTimestamp)
             galleryRepository.invalidate()
         }
+        logger.i(TAG, "handleMediaChange end | enqueued=$enqueued duplicates=$duplicates outOfScope=$outOfScope newLastScan=$newestTimestamp")
 
         triggerWorker()
     }
@@ -215,10 +257,17 @@ class UploadForegroundService : Service() {
     )
 
     private fun triggerWorker() {
-        val worker = uploadWorker ?: return
+        val worker = uploadWorker ?: run {
+            FileLogger.getInstance(this).w(TAG, "triggerWorker: uploadWorker is null")
+            return
+        }
+        FileLogger.getInstance(this).i(TAG, "triggerWorker | isProcessing=$isProcessing")
         scope.launch(Dispatchers.IO) {
             processLock.withLock {
-                if (isProcessing) return@withLock
+                if (isProcessing) {
+                    FileLogger.getInstance(this@UploadForegroundService).d(TAG, "triggerWorker skipped | already processing")
+                    return@withLock
+                }
                 isProcessing = true
                 try {
                     worker.processQueue()
@@ -230,10 +279,12 @@ class UploadForegroundService : Service() {
     }
 
     companion object {
+        private const val TAG = "UploadForegroundService"
         private const val DEBOUNCE_MS = 3000L
         private const val KEY_VIDEOS_ENABLED = "videos_enabled"
 
         fun start(context: Context) {
+            FileLogger.getInstance(context).i(TAG, "start requested")
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, UploadForegroundService::class.java)
@@ -241,6 +292,7 @@ class UploadForegroundService : Service() {
         }
 
         fun processQueueNow(context: Context) {
+            FileLogger.getInstance(context).i(TAG, "processQueueNow requested")
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, UploadForegroundService::class.java).setAction(ACTION_PROCESS_QUEUE)
@@ -248,6 +300,7 @@ class UploadForegroundService : Service() {
         }
 
         fun stop(context: Context) {
+            FileLogger.getInstance(context).i(TAG, "stop requested")
             context.stopService(Intent(context, UploadForegroundService::class.java))
         }
 

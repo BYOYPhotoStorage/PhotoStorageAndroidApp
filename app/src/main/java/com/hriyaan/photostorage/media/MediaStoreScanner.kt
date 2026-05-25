@@ -5,9 +5,9 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.MediaStore
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.hriyaan.photostorage.PhotoBackupApp
+import com.hriyaan.photostorage.data.FileLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -18,14 +18,18 @@ class MediaStoreScanner(private val context: Context) {
         dateColumn: String = MediaStore.Images.Media.DATE_ADDED,
         bucketIds: Set<String>? = null
     ): List<MediaItem> = withContext(Dispatchers.IO) {
+        val logger = FileLogger.getInstance(context)
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.DATE_TAKEN,
-            MediaStore.Images.Media.DATE_ADDED
+            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.BUCKET_ID
         )
         val (selection, args) = buildSelection(dateColumn, since, bucketIds, isImage = true)
+
+        logger.d(TAG, "scanImages | since=$since dateColumn=$dateColumn bucketCount=${bucketIds?.size ?: 0} buckets=${bucketIds?.joinToString(",") ?: "all"}")
 
         val cursor = context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -41,6 +45,7 @@ class MediaStoreScanner(private val context: Context) {
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val dateTakenCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
             val dateAddedCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val bucketIdCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
 
             val out = ArrayList<MediaItem>(c.count)
             while (c.moveToNext()) {
@@ -52,6 +57,7 @@ class MediaStoreScanner(private val context: Context) {
                 } else {
                     c.getLong(dateTakenCol)
                 }
+                val bucketId = c.getString(bucketIdCol)
                 out += MediaItem(
                     uri = ContentUris.withAppendedId(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -61,9 +67,11 @@ class MediaStoreScanner(private val context: Context) {
                     size = size,
                     dateTaken = dateTaken,
                     mediaType = MediaType.PHOTO,
-                    durationMs = null
+                    durationMs = null,
+                    bucketId = bucketId
                 )
             }
+            logger.d(TAG, "scanImages result | count=${out.size}")
             out
         }
     }
@@ -73,10 +81,14 @@ class MediaStoreScanner(private val context: Context) {
         dateColumn: String = MediaStore.Video.Media.DATE_ADDED,
         bucketIds: Set<String>? = null
     ): List<MediaItem> = withContext(Dispatchers.IO) {
+        val logger = FileLogger.getInstance(context)
         val app = context.applicationContext as PhotoBackupApp
-        if (!app.prefsStore.getVideosEnabled()) return@withContext emptyList()
+        if (!app.prefsStore.getVideosEnabled()) {
+            logger.d(TAG, "scanVideos skipped | videosEnabled=false")
+            return@withContext emptyList()
+        }
         if (!hasVideoReadPermission()) {
-            Log.w(TAG, "READ_MEDIA_VIDEO not granted; skipping video scan")
+            logger.w(TAG, "scanVideos skipped | READ_MEDIA_VIDEO not granted")
             return@withContext emptyList()
         }
 
@@ -86,9 +98,12 @@ class MediaStoreScanner(private val context: Context) {
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_TAKEN,
             MediaStore.Video.Media.DATE_ADDED,
-            MediaStore.Video.Media.DURATION
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.BUCKET_ID
         )
         val (selection, args) = buildSelection(dateColumn, since, bucketIds, isImage = false)
+
+        logger.d(TAG, "scanVideos | since=$since dateColumn=$dateColumn bucketCount=${bucketIds?.size ?: 0}")
 
         val cursor = context.contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -105,6 +120,7 @@ class MediaStoreScanner(private val context: Context) {
             val dateTakenCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
             val dateAddedCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
             val durationCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val bucketIdCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
 
             val out = ArrayList<MediaItem>(c.count)
             while (c.moveToNext()) {
@@ -118,6 +134,7 @@ class MediaStoreScanner(private val context: Context) {
                     c.getLong(dateTakenCol)
                 }
                 val durationMs = if (c.isNull(durationCol)) null else c.getLong(durationCol)
+                val bucketId = c.getString(bucketIdCol)
                 out += MediaItem(
                     uri = ContentUris.withAppendedId(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -127,9 +144,11 @@ class MediaStoreScanner(private val context: Context) {
                     size = size,
                     dateTaken = dateTaken,
                     mediaType = MediaType.VIDEO,
-                    durationMs = durationMs
+                    durationMs = durationMs,
+                    bucketId = bucketId
                 )
             }
+            logger.d(TAG, "scanVideos result | count=${out.size}")
             out
         }
     }

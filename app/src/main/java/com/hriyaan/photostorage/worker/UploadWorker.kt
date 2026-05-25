@@ -14,6 +14,7 @@ import com.hriyaan.photostorage.PhotoBackupApp
 import com.hriyaan.photostorage.R
 import com.hriyaan.photostorage.b2.S3KeyBuilder
 import com.hriyaan.photostorage.b2.S3Uploader
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.PrefsStore
 import com.hriyaan.photostorage.data.UploadDao
 import com.hriyaan.photostorage.data.UploadRecord
@@ -39,6 +40,7 @@ class UploadWorker(
     private val galleryRepository = (context.applicationContext as PhotoBackupApp).galleryRepository
 
     suspend fun processQueue() {
+        val logger = FileLogger.getInstance(context)
         val now = System.currentTimeMillis()
         val mode = prefsStore.getUploadMode()
         val gate = UploadModeGate(context, prefsStore)
@@ -48,15 +50,28 @@ class UploadWorker(
             gate.decide(now)
         }
 
+        logger.i(TAG, "processQueue start | mode=$mode decision=${decision.javaClass.simpleName}")
+
         if (decision is UploadModeGate.Decision.Defer) {
             val pendingCount = uploadDao.getPendingQueue().size + uploadDao.getFailedRetryable().size
+            logger.i(TAG, "processQueue deferred | reason=${decision.reason} pending=$pendingCount")
             showDeferredNotification(decision.reason, pendingCount)
             return
         }
 
+        val selectedBuckets = prefsStore.getSelectedBucketIds()
         val pending = uploadDao.getPendingQueue()
         val retryable = uploadDao.getFailedRetryable()
-        val queue = (pending + retryable).sortedBy { it.createdAt }
+        val allQueue = (pending + retryable).sortedBy { it.createdAt }
+
+        val queue = if (selectedBuckets.isEmpty()) {
+            allQueue
+        } else {
+            allQueue.filter { it.bucketId in selectedBuckets }
+        }
+        val skipped = allQueue.size - queue.size
+
+        logger.i(TAG, "processQueue queue | pending=${pending.size} retryable=${retryable.size} total=${allQueue.size} afterBucketFilter=${queue.size} skipped=$skipped")
 
         if (queue.isEmpty()) {
             notificationManager.cancelProgressNotification()
@@ -80,6 +95,7 @@ class UploadWorker(
                 .notify(UploadNotificationManager.ID_FOREGROUND, foregroundNotification)
             notificationManager.showProgressNotification(current, total)
 
+            logger.i(TAG, "processRecord start [$current/$total] | id=${record.id} filename=${record.filename} type=${record.mediaType} status=${record.status} retry=${record.retryCount}")
             uploadDao.updateStatus(record.id, UploadDao.STATUS_UPLOADING)
             galleryRepository.invalidate()
 
@@ -89,16 +105,19 @@ class UploadWorker(
             val result = processSingle(record)
             if (result.isSuccess) {
                 successCount++
-            } else if (!wasAlreadyPermanent) {
+                logger.i(TAG, "processRecord success [$current/$total] | id=${record.id} filename=${record.filename}")
+            } else {
                 val ex = result.exceptionOrNull()
-                val isAuthFailure = ex is S3Exception &&
-                    ex.sdkErrorMetadata.errorCode in AUTH_ERROR_CODES
-                if (isAuthFailure || willBecomePermanent) {
+                val errorCode = (ex as? S3Exception)?.sdkErrorMetadata?.errorCode
+                val isAuthFailure = ex is S3Exception && errorCode in AUTH_ERROR_CODES
+                logger.e(TAG, "processRecord failed [$current/$total] | id=${record.id} filename=${record.filename} error=${ex?.javaClass?.simpleName} code=$errorCode msg=${ex?.message}")
+                if (!wasAlreadyPermanent && (isAuthFailure || willBecomePermanent)) {
                     permanentFailureCount++
                 }
             }
         }
 
+        logger.i(TAG, "processQueue end | success=$successCount permanentFail=$permanentFailureCount")
         if (successCount > 0) {
             notificationManager.showCompletionNotification(successCount)
         }
@@ -107,8 +126,8 @@ class UploadWorker(
         }
         notificationManager.cancelProgressNotification()
 
-        val remaining = uploadDao.getPendingQueue().size + uploadDao.getFailedRetryable().size
-        val finalNotification = notificationManager.buildForegroundNotification(remaining)
+        val remainingPending = uploadDao.getPendingQueue().size + uploadDao.getFailedRetryable().size
+        val finalNotification = notificationManager.buildForegroundNotification(remainingPending)
         NotificationManagerCompat.from(context)
             .notify(UploadNotificationManager.ID_FOREGROUND, finalNotification)
     }
@@ -121,9 +140,11 @@ class UploadWorker(
     }
 
     private suspend fun processPhotoRecord(record: UploadRecord): Result<Unit> {
+        val logger = FileLogger.getInstance(context)
         val uri = try {
             Uri.parse(record.localUri)
         } catch (e: Exception) {
+            logger.e(TAG, "processPhotoRecord invalid URI | id=${record.id} uri=${record.localUri}")
             markFailed(record)
             return Result.failure(e)
         }
@@ -131,13 +152,16 @@ class UploadWorker(
         val inputStream = try {
             context.contentResolver.openInputStream(uri)
         } catch (e: SecurityException) {
+            logger.e(TAG, "processPhotoRecord security denied | id=${record.id} uri=$uri")
             markFailed(record)
             return Result.failure(e)
         } catch (e: Exception) {
+            logger.e(TAG, "processPhotoRecord open failed | id=${record.id} uri=$uri error=${e.message}")
             markFailed(record)
             return Result.failure(e)
         } ?: run {
             val e = IllegalStateException("Could not open input stream for $uri")
+            logger.e(TAG, "processPhotoRecord no stream | id=${record.id} uri=$uri")
             markFailed(record)
             return Result.failure(e)
         }
@@ -145,12 +169,15 @@ class UploadWorker(
         val photoBytes = try {
             inputStream.use { it.readBytes() }
         } catch (e: Exception) {
+            logger.e(TAG, "processPhotoRecord read failed | id=${record.id} uri=$uri error=${e.message}")
             markFailed(record)
             return Result.failure(e)
         }
 
         val photoKey = record.photoB2Path ?: S3KeyBuilder.photoKey(record.filename, record.dateTaken)
         val thumbKey = record.thumbnailB2Path ?: S3KeyBuilder.thumbnailKey(record.filename, record.dateTaken)
+
+        logger.d(TAG, "processPhotoRecord upload | id=${record.id} key=$photoKey size=${photoBytes.size}")
 
         return try {
             s3Uploader.upload(
@@ -174,15 +201,18 @@ class UploadWorker(
         } catch (e: S3Exception) {
             handleS3Exception(record, e)
         } catch (e: Exception) {
+            logger.e(TAG, "processPhotoRecord upload failed | id=${record.id} key=$photoKey error=${e.message}")
             markFailed(record)
             Result.failure(e)
         }
     }
 
     private suspend fun processVideoRecord(record: UploadRecord): Result<Unit> {
+        val logger = FileLogger.getInstance(context)
         val uri = try {
             Uri.parse(record.localUri)
         } catch (e: Exception) {
+            logger.e(TAG, "processVideoRecord invalid URI | id=${record.id} uri=${record.localUri}")
             markFailed(record)
             return Result.failure(e)
         }
@@ -207,6 +237,8 @@ class UploadWorker(
         var actuallyCompressed = false
         var uploadedKey = originalKey
 
+        logger.d(TAG, "processVideoRecord start | id=${record.id} filename=${record.filename} shouldCompress=$shouldCompress qualityMode=$qualityMode")
+
         return try {
             if (shouldCompress) {
                 val outputFile = File(
@@ -219,11 +251,9 @@ class UploadWorker(
                     transcodedFile = outputFile
                     actuallyCompressed = true
                     uploadedKey = compressedKey
+                    logger.i(TAG, "processVideoRecord transcode success | id=${record.id} output=${outputFile.length()}bytes")
                 } else {
-                    Log.w(
-                        TAG,
-                        "Transcode failed for ${record.filename}: ${transcodeResult.exceptionOrNull()?.message}"
-                    )
+                    logger.w(TAG, "processVideoRecord transcode failed | id=${record.id} filename=${record.filename} error=${transcodeResult.exceptionOrNull()?.message}")
                 }
             }
 
@@ -232,6 +262,7 @@ class UploadWorker(
                 tempUploadFile = temp
                 temp
             }
+            logger.d(TAG, "processVideoRecord upload | id=${record.id} key=$uploadedKey size=${uploadFile.length()} compressed=$actuallyCompressed")
 
             s3Uploader.upload(
                 key = uploadedKey,
@@ -257,10 +288,12 @@ class UploadWorker(
                 originalPathB2 = null
             )
             galleryRepository.invalidate()
+            logger.i(TAG, "processVideoRecord success | id=${record.id} key=$uploadedKey compressed=$actuallyCompressed")
             Result.success(Unit)
         } catch (e: S3Exception) {
             handleS3Exception(record, e)
         } catch (e: Exception) {
+            logger.e(TAG, "processVideoRecord failed | id=${record.id} key=$uploadedKey error=${e.message}")
             markFailed(record)
             Result.failure(e)
         } finally {
@@ -270,13 +303,16 @@ class UploadWorker(
     }
 
     private fun handleS3Exception(record: UploadRecord, e: S3Exception): Result<Unit> {
+        val logger = FileLogger.getInstance(context)
         val errorCode = e.sdkErrorMetadata.errorCode
         return if (errorCode in AUTH_ERROR_CODES) {
+            logger.e(TAG, "handleS3Exception auth error | id=${record.id} code=$errorCode -> permanently_failed")
             uploadDao.updateStatus(record.id, UploadDao.STATUS_PERMANENTLY_FAILED)
             galleryRepository.invalidate()
             notificationManager.showAuthFailureNotification()
             Result.failure(e)
         } else {
+            logger.w(TAG, "handleS3Exception retryable | id=${record.id} code=$errorCode retry=${record.retryCount + 1}")
             markFailed(record)
             Result.failure(e)
         }
@@ -337,12 +373,15 @@ class UploadWorker(
     }
 
     private fun markFailed(record: UploadRecord) {
+        val logger = FileLogger.getInstance(context)
         val newRetryCount = record.retryCount + 1
         if (newRetryCount >= 5) {
+            logger.w(TAG, "markFailed | id=${record.id} filename=${record.filename} retryCount=$newRetryCount -> permanently_failed")
             uploadDao.updateStatus(record.id, UploadDao.STATUS_PERMANENTLY_FAILED)
         } else {
             val nextRetry = System.currentTimeMillis() +
                 (2.0.pow(newRetryCount).toLong() * 60 * 1000)
+            logger.w(TAG, "markFailed | id=${record.id} filename=${record.filename} retryCount=$newRetryCount nextRetry=${nextRetry}")
             uploadDao.updateRetry(record.id, newRetryCount, nextRetry)
             uploadDao.updateStatus(record.id, UploadDao.STATUS_FAILED)
         }

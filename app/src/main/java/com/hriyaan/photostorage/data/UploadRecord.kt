@@ -19,5 +19,6 @@ data class UploadRecord(
     val mediaType: String = "photo",
     val originalPathB2: String? = null,
     val pendingLocalDelete: Boolean = false,
-    val compressed: Boolean = false
+    val compressed: Boolean = false,
+    val bucketId: String? = null
 )

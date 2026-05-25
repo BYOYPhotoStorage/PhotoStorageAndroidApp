@@ -3,6 +3,7 @@ package com.hriyaan.photostorage.worker
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.PrefsStore
 import java.util.Calendar
 
@@ -20,7 +21,7 @@ class UploadModeGate(
         val mode = prefsStore.getUploadMode()
         val wifiOnly = prefsStore.isWifiOnly()
         val unmetered = isUnmetered()
-        return when (mode) {
+        val decision = when (mode) {
             MODE_IMMEDIATE -> {
                 if (wifiOnly && !unmetered) Decision.Defer(REASON_WAITING_WIFI, null)
                 else Decision.UploadNow
@@ -32,6 +33,12 @@ class UploadModeGate(
             }
             else -> Decision.UploadNow
         }
+        val logger = FileLogger.getInstance(context)
+        when (decision) {
+            is Decision.UploadNow -> logger.d(TAG, "decide=UploadNow | mode=$mode wifiOnly=$wifiOnly unmetered=$unmetered")
+            is Decision.Defer -> logger.i(TAG, "decide=Defer | mode=$mode wifiOnly=$wifiOnly unmetered=$unmetered reason=${decision.reason}")
+        }
+        return decision
     }
 
     private fun isUnmetered(): Boolean {
@@ -55,6 +62,7 @@ class UploadModeGate(
     }
 
     companion object {
+        private const val TAG = "UploadModeGate"
         const val MODE_IMMEDIATE = "immediate"
         const val MODE_SCHEDULED = "scheduled"
         const val MODE_HYBRID = "hybrid"

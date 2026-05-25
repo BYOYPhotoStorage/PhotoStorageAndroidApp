@@ -45,7 +45,8 @@ class UploadDatabase(context: Context) {
                     $COL_MEDIA_TYPE TEXT NOT NULL DEFAULT '${UploadDao.MEDIA_TYPE_PHOTO}',
                     $COL_ORIGINAL_PATH_B2 TEXT,
                     $COL_PENDING_LOCAL_DELETE INTEGER NOT NULL DEFAULT 0,
-                    $COL_COMPRESSED INTEGER NOT NULL DEFAULT 0
+                    $COL_COMPRESSED INTEGER NOT NULL DEFAULT 0,
+                    $COL_BUCKET_ID TEXT
                 )
                 """.trimIndent()
             )
@@ -97,7 +98,7 @@ class UploadDatabase(context: Context) {
 
     internal companion object {
         const val DB_NAME = "uploads.db"
-        const val DB_VERSION = 5
+        const val DB_VERSION = 6
 
         const val TABLE_UPLOADS = "uploads"
         const val COL_ID = "id"
@@ -119,6 +120,7 @@ class UploadDatabase(context: Context) {
         const val COL_ORIGINAL_PATH_B2 = "original_path_b2"
         const val COL_PENDING_LOCAL_DELETE = "pending_local_delete"
         const val COL_COMPRESSED = "compressed"
+        const val COL_BUCKET_ID = "bucket_id"
 
         const val TABLE_SHARE_LINKS = "share_links"
         const val COL_SHARE_ID = "id"

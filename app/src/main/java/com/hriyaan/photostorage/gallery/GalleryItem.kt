@@ -18,7 +18,8 @@ sealed class GalleryItem {
         val mediaStoreUri: Uri,
         val sizeBytes: Long,
         val queuedRecord: UploadRecord?,
-        val mediaType: String = UploadDao.MEDIA_TYPE_PHOTO
+        val mediaType: String = UploadDao.MEDIA_TYPE_PHOTO,
+        val bucketId: String? = null
     ) : GalleryItem()
 
     data class CloudOnly(

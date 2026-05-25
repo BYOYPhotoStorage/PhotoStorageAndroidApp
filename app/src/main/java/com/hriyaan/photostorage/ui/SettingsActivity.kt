@@ -196,7 +196,12 @@ class SettingsActivity : AppCompatActivity() {
                         .toSet()
                     prefs.setSelectedBucketIds(newSelection)
                     updateBackupFoldersValue()
-                    app.galleryRepository.invalidate()
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            app.uploadDatabase.dao.clearPendingQueue()
+                        }
+                        app.galleryRepository.invalidate()
+                    }
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .show()

@@ -3,6 +3,7 @@ package com.hriyaan.photostorage.data
 import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteOpenHelper
+import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_BUCKET_ID
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CLOUD_DELETED_AT
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_COMPRESSED
 import com.hriyaan.photostorage.data.UploadDatabase.Companion.COL_CREATED_AT
@@ -60,6 +61,7 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
             record.originalPathB2?.let { put(COL_ORIGINAL_PATH_B2, it) }
             put(COL_PENDING_LOCAL_DELETE, if (record.pendingLocalDelete) 1 else 0)
             put(COL_COMPRESSED, if (record.compressed) 1 else 0)
+            put(COL_BUCKET_ID, record.bucketId)
         }
         return helper.writableDatabase.insertOrThrow(TABLE_UPLOADS, null, values)
     }
@@ -342,6 +344,7 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
                     record.originalPathB2?.let { put(COL_ORIGINAL_PATH_B2, it) }
                     put(COL_PENDING_LOCAL_DELETE, if (record.pendingLocalDelete) 1 else 0)
                     put(COL_COMPRESSED, if (record.compressed) 1 else 0)
+                    put(COL_BUCKET_ID, record.bucketId)
                 }
                 db.insertOrThrow(TABLE_UPLOADS, null, values)
             }
@@ -349,6 +352,14 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         } finally {
             db.endTransaction()
         }
+    }
+
+    fun clearPendingQueue(): Int {
+        return helper.writableDatabase.delete(
+            TABLE_UPLOADS,
+            "$COL_STATUS = ?",
+            arrayOf(STATUS_PENDING)
+        )
     }
 
     fun getByMediaType(mediaType: String): List<UploadRecord> {
@@ -496,7 +507,8 @@ class UploadDao internal constructor(private val helper: SQLiteOpenHelper) {
         mediaType = getString(getColumnIndexOrThrow(COL_MEDIA_TYPE)),
         originalPathB2 = getStringOrNull(COL_ORIGINAL_PATH_B2),
         pendingLocalDelete = getInt(getColumnIndexOrThrow(COL_PENDING_LOCAL_DELETE)) == 1,
-        compressed = getInt(getColumnIndexOrThrow(COL_COMPRESSED)) == 1
+        compressed = getInt(getColumnIndexOrThrow(COL_COMPRESSED)) == 1,
+        bucketId = getStringOrNull(COL_BUCKET_ID)
     )
 
     private fun Cursor.getStringOrNull(column: String): String? {

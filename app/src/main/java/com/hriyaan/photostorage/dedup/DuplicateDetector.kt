@@ -2,6 +2,7 @@ package com.hriyaan.photostorage.dedup
 
 import android.content.Context
 import android.net.Uri
+import com.hriyaan.photostorage.data.FileLogger
 import com.hriyaan.photostorage.data.MediaStorePhoto
 import com.hriyaan.photostorage.data.UploadDao
 import kotlinx.coroutines.Dispatchers
@@ -20,17 +21,21 @@ class DuplicateDetector(
 ) {
 
     suspend fun isDuplicate(photo: MediaStorePhoto): DuplicateResult {
+        val logger = FileLogger.getInstance(context)
         val existing = uploadDao.findByFilenameAndSize(photo.filename, photo.size)
         if (existing != null && existing.dateTaken == photo.dateTakenMs) {
+            logger.d(TAG, "isDuplicate=true | reason=filename_size_date filename=${photo.filename} size=${photo.size}")
             return DuplicateResult.Duplicate("filename_size_date")
         }
 
         val hash = computeSha256(photo.uri)
         val existingByHash = uploadDao.findBySha256(hash)
         if (existingByHash != null) {
+            logger.d(TAG, "isDuplicate=true | reason=sha256 filename=${photo.filename} hash=${hash.take(16)}...")
             return DuplicateResult.Duplicate("sha256")
         }
 
+        logger.d(TAG, "isDuplicate=false | filename=${photo.filename} size=${photo.size}")
         return DuplicateResult.NotDuplicate
     }
 
@@ -52,6 +57,10 @@ class DuplicateDetector(
         }
 
         digest.digest().toHex()
+    }
+
+    companion object {
+        private const val TAG = "DuplicateDetector"
     }
 
     private fun ByteArray.toHex(): String {
