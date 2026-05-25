@@ -132,5 +132,10 @@ class ShareLinkDialog : DialogFragment() {
         )
 }
 
-suspend fun GalleryRepository.findItemById(id: String): GalleryItem? =
-    load(GalleryViewMode.MERGED).firstOrNull { it.id == id }
+suspend fun GalleryRepository.findItemById(id: String): GalleryItem? {
+    for (mode in GalleryViewMode.entries) {
+        val item = load(mode).firstOrNull { it.id == id }
+        if (item != null) return item
+    }
+    return null
+}
